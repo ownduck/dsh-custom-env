@@ -1,0 +1,4 @@
+{
+  "meta.title": "Environment variables",
+  "meta.description": "Edit $DSH_HOME/.env and sync values to the Host process and your OS user environment (Windows and macOS)."
+}

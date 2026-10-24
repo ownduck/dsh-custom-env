@@ -1,0 +1,3 @@
+- insert:
+    - id: custom-env
+      name: dsh-custom-env
