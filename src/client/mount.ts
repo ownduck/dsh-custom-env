@@ -37,7 +37,7 @@ function registerUi(ctx: Context): void {
         return result.value
       },
       remove: async (name: string) => {
-        const result = await ctx.remote.customEnv.remove(name)
+        const result = await ctx.remote.customEnv.deleteEntry(name)
         if (!result.ok) throw result.error
         return result.value
       },

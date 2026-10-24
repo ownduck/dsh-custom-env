@@ -55,7 +55,7 @@ export default class CustomEnvController extends TypertRemoteService {
      * @param name - writable variable name.
      * @returns updated snapshot.
      */
-    remove(name: string): Promise<EnvSnapshot>;
+    deleteEntry(name: string): Promise<EnvSnapshot>;
     /**
      * Write a modified entry back to its Host-start baseline value.
      * @param name - variable that exists in the baseline and differs from it.

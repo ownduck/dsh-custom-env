@@ -119,8 +119,8 @@ export default class CustomEnvController extends TypertRemoteService {
    * @param name - writable variable name.
    * @returns updated snapshot.
    */
-  @Remote('remove')
-  async remove(name: string): Promise<EnvSnapshot> {
+  @Remote('deleteEntry')
+  async deleteEntry(name: string): Promise<EnvSnapshot> {
     if (!isWritableEnvName(name)) {
       throw new RemoteError('custom-env/invalid-name', `refused name "${name}"`, { name })
     }
