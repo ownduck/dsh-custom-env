@@ -1,7 +1,7 @@
 /** Rebuild lib/index.js, lib/client.js, and declaration stubs using the monorepo esbuild. */
 
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
@@ -16,6 +16,8 @@ if (esbuildDir === undefined) throw new Error('esbuild not found under vertax-wo
 const require = createRequire(join(pnpm, esbuildDir, 'node_modules', 'esbuild', 'package.json'))
 const esbuild = require('esbuild')
 
+// Only platform-seeded Client modules stay external. Bundle typert remote-info
+// into client.js — it is not in PLATFORM_MODULES and would fail ModuleLoader require.
 const clientExternals = [
   'react',
   'react/jsx-runtime',
@@ -28,8 +30,6 @@ const clientExternals = [
   '@deepseek-ai/dsh-client-ui-renderer/client',
   '@deepseek-ai/dsh-client-ui-primitives',
   '@deepseek-ai/dsh-client-ui-slots',
-  '@deepseek-ai/dsh-typert-protocol',
-  '@deepseek-ai/dsh-typert-protocol/remote-info',
 ]
 
 mkdirSync(join(root, 'lib'), { recursive: true })
@@ -56,6 +56,10 @@ await esbuild.build({
   format: 'cjs',
   target: 'es2022',
   sourcemap: true,
+  // Use the automatic JSX runtime so the bundle does not assume a global `React`.
+  jsx: 'automatic',
+  // Resolve peer packages from the sibling harness checkout while developing.
+  nodePaths: [join(monorepo, 'node_modules')],
   external: clientExternals,
   plugins: [{
     name: 'typert-remote-client',
@@ -63,6 +67,16 @@ await esbuild.build({
       build.onResolve({ filter: /typert\.remote-client\.js$/ }, () => ({
         path: join(root, 'lib', 'typert.remote-client.js'),
       }))
+      const protocolRoot = join(monorepo, 'packages', 'typert', 'protocol')
+      const remoteInfoCandidates = [
+        join(protocolRoot, 'lib', 'types', 'remote-info.js'),
+        join(protocolRoot, 'src', 'remote-info.ts'),
+      ]
+      build.onResolve({ filter: /^@deepseek-ai\/dsh-typert-protocol\/remote-info$/ }, () => {
+        const path = remoteInfoCandidates.find(candidate => existsSync(candidate))
+        if (path === undefined) return undefined
+        return { path }
+      })
     },
   }, {
     name: 'css-modules-inline',
