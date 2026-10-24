@@ -41,6 +41,11 @@ function registerUi(ctx: Context): void {
         if (!result.ok) throw result.error
         return result.value
       },
+      restore: async (name: string) => {
+        const result = await ctx.remote.customEnv.restore(name)
+        if (!result.ok) throw result.error
+        return result.value
+      },
       cliStatus: async () => {
         const result = await ctx.remote.customEnv.cliStatus()
         if (!result.ok) throw result.error

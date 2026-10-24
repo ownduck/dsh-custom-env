@@ -1,9 +1,15 @@
+/** Pending state relative to the Host-start baseline. */
+export type EnvEntryKind = 'unchanged' | 'modified' | 'added';
 /** One editable environment variable row. */
 export interface EnvEntry {
     /** Variable name. */
     readonly name: string;
     /** Variable value. */
     readonly value: string;
+    /** Relation to the Host-start baseline. */
+    readonly kind: EnvEntryKind;
+    /** Baseline value when `kind === 'modified'`; otherwise `null`. */
+    readonly previous: string | null;
 }
 /** Snapshot returned by `customEnv/list`. */
 export interface EnvSnapshot {

@@ -1,5 +1,9 @@
 /** Line-oriented `$DSH_HOME/.env` read/write helpers. */
-import type { EnvEntry } from './types.ts';
+/** Name/value pair before Host baseline classification. */
+export interface RawEnvEntry {
+    readonly name: string;
+    readonly value: string;
+}
 /**
  * Absolute path of the harness-home dotenv file.
  * @returns `$DSH_HOME/.env`.
@@ -17,7 +21,7 @@ export declare function loadEnvMap(): Readonly<Record<string, string>>;
 export declare function listEnvEntries(): {
     path: string;
     exists: boolean;
-    entries: EnvEntry[];
+    entries: RawEnvEntry[];
 };
 /**
  * Upsert one key in `$DSH_HOME/.env`, creating the file when missing.

@@ -1,4 +1,4 @@
-/** Settings section: list / upsert / remove `$DSH_HOME/.env` entries + CLI PATH status. */
+/** Settings section: draft confirm/cancel for `$DSH_HOME/.env` + CLI PATH status. */
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type { CliStatus, EnvSnapshot } from '../types.ts';
 import type { EnvSettingsKey } from './locales.ts';
@@ -6,10 +6,12 @@ import type { EnvSettingsKey } from './locales.ts';
 export interface EnvSettingsInjected {
     /** Load the current snapshot from the Host. */
     readonly load: () => Promise<EnvSnapshot>;
-    /** Create or replace one entry. */
+    /** Create or replace one entry (Confirm only). */
     readonly upsert: (name: string, value: string) => Promise<EnvSnapshot>;
     /** Delete one entry. */
     readonly remove: (name: string) => Promise<EnvSnapshot>;
+    /** Write a modified entry back to the Host-start baseline. */
+    readonly restore: (name: string) => Promise<EnvSnapshot>;
     /** Load CLI PATH comparison for this Host. */
     readonly cliStatus: () => Promise<CliStatus>;
     /** Install expected CLI onto user PATH / macOS symlink. */
@@ -21,5 +23,5 @@ export type EnvSettingsSectionProps = PropsRuntime<'settings.section'> & PropsLo
  * Render the environment-variables settings page.
  * @param props - locale `t` and Host remote callbacks.
  */
-export declare function EnvSettingsSection({ t, load, upsert, remove, cliStatus, cliInstall }: EnvSettingsSectionProps): any;
+export declare function EnvSettingsSection({ t, load, upsert, remove, restore, cliStatus, cliInstall, }: EnvSettingsSectionProps): any;
 export type { EnvSettingsKey };

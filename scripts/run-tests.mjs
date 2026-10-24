@@ -40,7 +40,10 @@ const nodePath = [
 
 const result = spawnSync(
   process.execPath,
-  ['--import', pathToFileURL(loader).href, '--test', 'tests/cli-path.spec.ts', 'tests/env-file.spec.ts'],
+  [
+    '--import', pathToFileURL(loader).href, '--test',
+    'tests/cli-path.spec.ts', 'tests/env-file.spec.ts', 'tests/pending.spec.ts',
+  ],
   {
     cwd: root,
     env: { ...process.env, NODE_PATH: nodePath },

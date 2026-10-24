@@ -8,9 +8,11 @@ import { cliInstall as installCli, cliStatus as readCliStatus } from './cli-path
 import { envFilePath, listEnvEntries, loadEnvMap, removeEnvEntry, upsertEnvEntry } from './env-file.ts'
 import { isWritableEnvName } from './names.ts'
 import { persistUserEnv, removeUserEnv } from './os-user-env/index.ts'
-import type { CliStatus, EnvSnapshot } from './types.ts'
+import { classifyEntry } from './pending.ts'
+import type { CliStatus, EnvEntry, EnvSnapshot } from './types.ts'
 
 export type { CliStatus, EnvEntry, EnvSnapshot } from './types.ts'
+export { classifyEntry } from './pending.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -27,6 +29,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'custom-env/invalid-value': { readonly name: string }
     /** CLI PATH / symlink install failed. */
     'custom-env/cli-install-failed': { readonly code: string }
+    /** Restore refused (not a modified baseline entry). */
+    'custom-env/restore-failed': { readonly name: string }
   }
 }
 
@@ -62,19 +66,27 @@ function clearLive(name: string): void {
 
 /** Host remote for `$DSH_HOME/.env` CRUD with live Host/OS sync. */
 export default class CustomEnvController extends TypertRemoteService {
+  /** `.env` map captured when this Host plugin started. */
+  private readonly baseline: Readonly<Record<string, string>>
+
   constructor(ctx: Context) {
     super(ctx, 'customEnv')
     const loaded = loadEnvMap()
+    this.baseline = { ...loaded }
     applyLive(loaded)
   }
 
   /**
-   * List current `$DSH_HOME/.env` entries.
+   * List current `$DSH_HOME/.env` entries with pending classification.
    * @returns path, existence, and sorted entries.
    */
   @Remote('list')
   async list(): Promise<EnvSnapshot> {
-    const { path, exists, entries } = listEnvEntries()
+    const { path, exists, entries: raw } = listEnvEntries()
+    const entries: EnvEntry[] = raw.map(({ name, value }) => {
+      const classified = classifyEntry(name, value, this.baseline)
+      return { name, value, kind: classified.kind, previous: classified.previous }
+    })
     return { path, exists, entries }
   }
 
@@ -119,6 +131,34 @@ export default class CustomEnvController extends TypertRemoteService {
       throw new RemoteError('custom-env/invalid-name', message, { name }, { cause: error })
     }
     clearLive(name)
+    return this.list()
+  }
+
+  /**
+   * Write a modified entry back to its Host-start baseline value.
+   * @param name - variable that exists in the baseline and differs from it.
+   * @returns updated snapshot.
+   */
+  @Remote('restore')
+  async restore(name: string): Promise<EnvSnapshot> {
+    if (!isWritableEnvName(name)) {
+      throw new RemoteError('custom-env/invalid-name', `refused name "${name}"`, { name })
+    }
+    const previous = this.baseline[name]
+    if (previous === undefined) {
+      throw new RemoteError('custom-env/restore-failed', `no baseline for "${name}"`, { name })
+    }
+    const current = loadEnvMap()[name]
+    if (current === previous) {
+      return this.list()
+    }
+    try {
+      upsertEnvEntry(name, previous)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new RemoteError('custom-env/restore-failed', message, { name }, { cause: error })
+    }
+    applyLive({ [name]: previous })
     return this.list()
   }
 

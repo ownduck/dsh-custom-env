@@ -93,3 +93,10 @@
   font-size: 12px;
   color: var(--dsw-alias-label-tertiary);
 }
+
+.pending {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-warning, #c67c00);
+}

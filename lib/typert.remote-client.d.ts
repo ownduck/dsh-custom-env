@@ -10,5 +10,6 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'custom-env/invalid-name': { readonly name: string }
     'custom-env/invalid-value': { readonly name: string }
     'custom-env/cli-install-failed': { readonly code: string }
+    'custom-env/restore-failed': { readonly name: string }
   }
 }

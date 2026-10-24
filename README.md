@@ -80,9 +80,10 @@ For a `file:` / local checkout, rebuild `lib/` after source changes, then restar
 ## Usage
 
 1. Open **Settings → Environment**
-2. Add, edit, or remove variables
-3. Host process sees changes immediately; OS user env applies to **new** terminals / apps
-4. In the **dsh command** block, compare PATH vs expected; click **Install** only when offered
+2. Edit as a **draft**: **Confirm** writes `$DSH_HOME/.env` (and Host/OS live); **Cancel** only reverts the input
+3. After Confirm, rows show a restart tip — **new** items say “added”; **modified** items (relative to Host start) also get **Restore** (writes back the Host-start value)
+4. Restart DSH / open a new terminal for the full OS effect; after Host restart, tips and Restore clear
+5. In the **dsh command** block, compare PATH vs expected; click **Install** only when offered
 
 Do not store bootstrap names in `.env` (including `PATH`). Prefer ordinary names for app config. Names containing `KEY` / `SECRET` / `TOKEN` remain scrubbed from model-visible shells by existing harness policy.
 

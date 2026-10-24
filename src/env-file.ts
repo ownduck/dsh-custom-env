@@ -5,7 +5,12 @@ import { dirname, join } from 'node:path'
 import { parseEnv } from 'node:util'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { isWritableEnvName } from './names.ts'
-import type { EnvEntry } from './types.ts'
+
+/** Name/value pair before Host baseline classification. */
+export interface RawEnvEntry {
+  readonly name: string
+  readonly value: string
+}
 
 /** One physical `.env` line retained for round-trip edits. */
 interface EnvLine {
@@ -48,7 +53,7 @@ export function loadEnvMap(): Readonly<Record<string, string>> {
  * List writable entries for the settings UI.
  * @returns Path, existence, and ordered entries.
  */
-export function listEnvEntries(): { path: string; exists: boolean; entries: EnvEntry[] } {
+export function listEnvEntries(): { path: string; exists: boolean; entries: RawEnvEntry[] } {
   const path = envFilePath()
   const exists = existsSync(path)
   const map = loadEnvMap()

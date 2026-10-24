@@ -1,4 +1,4 @@
-/** Settings section: list / upsert / remove `$DSH_HOME/.env` entries + CLI PATH status. */
+/** Settings section: draft confirm/cancel for `$DSH_HOME/.env` + CLI PATH status. */
 
 import { useCallback, useEffect, useState } from 'react'
 import { Button, Input } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -11,10 +11,12 @@ import css from './EnvSettingsSection.module.css'
 export interface EnvSettingsInjected {
   /** Load the current snapshot from the Host. */
   readonly load: () => Promise<EnvSnapshot>
-  /** Create or replace one entry. */
+  /** Create or replace one entry (Confirm only). */
   readonly upsert: (name: string, value: string) => Promise<EnvSnapshot>
   /** Delete one entry. */
   readonly remove: (name: string) => Promise<EnvSnapshot>
+  /** Write a modified entry back to the Host-start baseline. */
+  readonly restore: (name: string) => Promise<EnvSnapshot>
   /** Load CLI PATH comparison for this Host. */
   readonly cliStatus: () => Promise<CliStatus>
   /** Install expected CLI onto user PATH / macOS symlink. */
@@ -33,7 +35,9 @@ const NAME_OK = /^[A-Za-z_][A-Za-z0-9_]*$/u
  * Render the environment-variables settings page.
  * @param props - locale `t` and Host remote callbacks.
  */
-export function EnvSettingsSection({ t, load, upsert, remove, cliStatus, cliInstall }: EnvSettingsSectionProps) {
+export function EnvSettingsSection({
+  t, load, upsert, remove, restore, cliStatus, cliInstall,
+}: EnvSettingsSectionProps) {
   const [snapshot, setSnapshot] = useState<EnvSnapshot | undefined>()
   const [cli, setCli] = useState<CliStatus | undefined>()
   const [drafts, setDrafts] = useState<Record<string, string>>({})
@@ -43,6 +47,13 @@ export function EnvSettingsSection({ t, load, upsert, remove, cliStatus, cliInst
   const [error, setError] = useState<string | undefined>()
   const [cliNotice, setCliNotice] = useState<string | undefined>()
   const [nameError, setNameError] = useState(false)
+
+  const applySnapshot = (next: EnvSnapshot): void => {
+    setSnapshot(next)
+    const nextDrafts: Record<string, string> = {}
+    for (const entry of next.entries) nextDrafts[entry.name] = entry.value
+    setDrafts(nextDrafts)
+  }
 
   const refreshCli = useCallback(async () => {
     try {
@@ -56,13 +67,9 @@ export function EnvSettingsSection({ t, load, upsert, remove, cliStatus, cliInst
     setBusy(true)
     setError(undefined)
     try {
-      const next = await load()
-      setSnapshot(next)
-      const nextDrafts: Record<string, string> = {}
-      for (const entry of next.entries) nextDrafts[entry.name] = entry.value
-      setDrafts(nextDrafts)
+      applySnapshot(await load())
       await refreshCli()
-    } catch (_error) {
+    } catch {
       setError(t('error'))
     } finally {
       setBusy(false)
@@ -75,31 +82,37 @@ export function EnvSettingsSection({ t, load, upsert, remove, cliStatus, cliInst
     setBusy(true)
     setError(undefined)
     try {
-      const next = await action()
-      setSnapshot(next)
-      const nextDrafts: Record<string, string> = {}
-      for (const entry of next.entries) nextDrafts[entry.name] = entry.value
-      setDrafts(nextDrafts)
-    } catch (_error) {
+      applySnapshot(await action())
+    } catch {
       setError(t('error'))
     } finally {
       setBusy(false)
     }
   }
 
-  const onAdd = (): void => {
-    const name = newName.trim()
-    if (!NAME_OK.test(name)) {
+  const newNameTrimmed = newName.trim()
+  const newDraftDirty = newNameTrimmed !== '' || newValue !== ''
+  const newCanConfirm = NAME_OK.test(newNameTrimmed) && newValue !== ''
+
+  const onConfirmNew = (): void => {
+    if (!NAME_OK.test(newNameTrimmed)) {
       setNameError(true)
       return
     }
+    if (newValue === '') return
     setNameError(false)
     void run(async () => {
-      const next = await upsert(name, newValue)
+      const next = await upsert(newNameTrimmed, newValue)
       setNewName('')
       setNewValue('')
       return next
     })
+  }
+
+  const onCancelNew = (): void => {
+    setNewName('')
+    setNewValue('')
+    setNameError(false)
   }
 
   const onInstallCli = (): void => {
@@ -108,8 +121,7 @@ export function EnvSettingsSection({ t, load, upsert, remove, cliStatus, cliInst
     setCliNotice(undefined)
     void (async () => {
       try {
-        const next = await cliInstall()
-        setCli(next)
+        setCli(await cliInstall())
         setCliNotice(t('cliInstallOk'))
       } catch {
         setError(t('cliInstallError'))
@@ -122,6 +134,12 @@ export function EnvSettingsSection({ t, load, upsert, remove, cliStatus, cliInst
   const cliReasonCopy = (status: CliStatus): string | undefined => {
     if (status.reason === 'could-not-resolve-expected-cli') return t('cliReasonUnresolved')
     if (status.reason === 'unsupported-platform') return t('cliReasonUnsupported')
+    return undefined
+  }
+
+  const pendingTip = (entry: EnvEntry): string | undefined => {
+    if (entry.kind === 'added') return t('restartRequiredAdded')
+    if (entry.kind === 'modified') return t('restartRequired')
     return undefined
   }
 
@@ -165,45 +183,77 @@ export function EnvSettingsSection({ t, load, upsert, remove, cliStatus, cliInst
       {snapshot !== undefined && snapshot.entries.length === 0 ? <p className={css.empty}>{t('empty')}</p> : null}
       {snapshot !== undefined && snapshot.entries.length > 0 ? (
         <ul className={css.list}>
-          {snapshot.entries.map((entry: EnvEntry) => (
-            <li key={entry.name} className={css.row}>
-              <div className={css.field}>
-                <label>{t('name')}</label>
-                <Input value={entry.name} disabled readOnly aria-label={t('name')} />
-              </div>
-              <div className={css.field}>
-                <label htmlFor={`env-value-${entry.name}`}>{t('value')}</label>
-                <Input
-                  id={`env-value-${entry.name}`}
-                  value={drafts[entry.name] ?? entry.value}
-                  disabled={busy}
-                  aria-label={t('value')}
-                  onChange={(event) => {
-                    const value = event.target.value
-                    setDrafts(previous => ({ ...previous, [entry.name]: value }))
-                  }}
-                />
-              </div>
-              <div className={css.actions}>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={busy || (drafts[entry.name] ?? entry.value) === entry.value}
-                  onClick={() => { void run(() => upsert(entry.name, drafts[entry.name] ?? entry.value)) }}
-                >
-                  {t('save')}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={busy}
-                  onClick={() => { void run(() => remove(entry.name)) }}
-                >
-                  {t('remove')}
-                </Button>
-              </div>
-            </li>
-          ))}
+          {snapshot.entries.map((entry: EnvEntry) => {
+            const draft = drafts[entry.name] ?? entry.value
+            const dirty = draft !== entry.value
+            const tip = pendingTip(entry)
+            return (
+              <li key={entry.name} className={css.row}>
+                <div className={css.field}>
+                  <label>{t('name')}</label>
+                  <Input value={entry.name} disabled readOnly aria-label={t('name')} />
+                </div>
+                <div className={css.field}>
+                  <label htmlFor={`env-value-${entry.name}`}>{t('value')}</label>
+                  <Input
+                    id={`env-value-${entry.name}`}
+                    value={draft}
+                    disabled={busy}
+                    aria-label={t('value')}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      setDrafts(previous => ({ ...previous, [entry.name]: value }))
+                    }}
+                  />
+                  {tip !== undefined && !dirty ? (
+                    <p className={css.pending} role="status">{tip}</p>
+                  ) : null}
+                </div>
+                <div className={css.actions}>
+                  {dirty ? (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        disabled={busy || draft === ''}
+                        onClick={() => { void run(() => upsert(entry.name, draft)) }}
+                      >
+                        {t('confirm')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() => {
+                          setDrafts(previous => ({ ...previous, [entry.name]: entry.value }))
+                        }}
+                      >
+                        {t('cancel')}
+                      </Button>
+                    </>
+                  ) : null}
+                  {entry.kind === 'modified' && !dirty ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => { void run(() => restore(entry.name)) }}
+                    >
+                      {t('restore')}
+                    </Button>
+                  ) : null}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => { void run(() => remove(entry.name)) }}
+                  >
+                    {t('remove')}
+                  </Button>
+                </div>
+              </li>
+            )
+          })}
         </ul>
       ) : null}
       <div className={css.add}>
@@ -231,7 +281,18 @@ export function EnvSettingsSection({ t, load, upsert, remove, cliStatus, cliInst
             onChange={(event) => { setNewValue(event.target.value) }}
           />
         </div>
-        <Button variant="primary" disabled={busy || newName.trim() === ''} onClick={onAdd}>{t('add')}</Button>
+        <div className={css.actions}>
+          {newDraftDirty ? (
+            <>
+              <Button variant="primary" disabled={busy || !newCanConfirm} onClick={onConfirmNew}>
+                {t('confirm')}
+              </Button>
+              <Button variant="outline" disabled={busy} onClick={onCancelNew}>
+                {t('cancel')}
+              </Button>
+            </>
+          ) : null}
+        </div>
       </div>
       {nameError ? <p className={css.status} data-tone="error" role="status">{t('invalidName')}</p> : null}
     </div>
