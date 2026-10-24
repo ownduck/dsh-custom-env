@@ -15,6 +15,7 @@ On save, values are applied to the Host `process.env` immediately and synced to 
 - Hot-apply to the current Host process
 - Sync to OS user environment on Windows and macOS
 - Rejects bootstrap names (`PATH`, `DSH_*`, `XDG_*`, …) that app-boot will not load from `.env`
+- **dsh command panel**: shows the `dsh` on your user PATH vs the launcher that started this Host; when they differ, an **Install** button appears (Windows user PATH / macOS `/usr/local/bin/dsh`). No uninstall button.
 
 ## Prerequisites
 
@@ -81,10 +82,31 @@ For a `file:` / local checkout, rebuild `lib/` after source changes, then restar
 1. Open **Settings → Environment**
 2. Add, edit, or remove variables
 3. Host process sees changes immediately; OS user env applies to **new** terminals / apps
+4. In the **dsh command** block, compare PATH vs expected; click **Install** only when offered
 
-Do not store bootstrap names in `.env`. Prefer ordinary names for app config. Names containing `KEY` / `SECRET` / `TOKEN` remain scrubbed from model-visible shells by existing harness policy.
+Do not store bootstrap names in `.env` (including `PATH`). Prefer ordinary names for app config. Names containing `KEY` / `SECRET` / `TOKEN` remain scrubbed from model-visible shells by existing harness policy.
 
-This plugin does **not** install the global `dsh` CLI. Use Desktop **Manage dsh Command…** or `npm install -g`.
+### Installing the `dsh` CLI from Settings
+
+Expected path is inferred from **how this Host was started** (Desktop packaged `resources/runtime/cli/bin`, or the Node/source launcher on `argv`).
+
+| Platform | What Install does | Conflict note |
+| --- | --- | --- |
+| **Windows** | Prepends the expected bin directory to the **user** `Path` (registry). Ownership key: `Software\dsh-custom-env\Command` (not DeepSeekHarness). | Can coexist with Desktop’s PATH entry; whichever directory is first wins in new terminals. |
+| **macOS** | Writes symlink `/usr/local/bin/dsh` → expected launcher. Receipt: `.dsh-custom-env-command.json`. | **Same path as Desktop “Manage dsh Command…”** — installing here may replace that link. |
+| **Linux** | Status only; no Install button. | — |
+
+Open a **new** terminal after Install. This plugin never calls Desktop `app.relaunch`.
+
+## Development
+
+```powershell
+cd dsh-custom-env
+pnpm test   # or: node --import tsx/esm --test tests/*.spec.ts
+pnpm build  # rebuilds lib/ (needs sibling vertax-work esbuild for client bundle)
+```
+
+Tests live under [`tests/`](tests/) (`env-file.spec.ts`, `cli-path.spec.ts`). Docs are this README pair only.
 
 ## GitHub vs npmjs
 

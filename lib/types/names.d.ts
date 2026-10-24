@@ -14,4 +14,3 @@ export declare function isBootstrapOnly(name: string): boolean;
  * @returns true when the key may be stored in `$DSH_HOME/.env`.
  */
 export declare function isWritableEnvName(name: string): boolean;
-//# sourceMappingURL=names.d.ts.map

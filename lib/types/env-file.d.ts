@@ -31,4 +31,3 @@ export declare function upsertEnvEntry(name: string, value: string): void;
  * @returns true when a line was removed.
  */
 export declare function removeEnvEntry(name: string): boolean;
-//# sourceMappingURL=env-file.d.ts.map

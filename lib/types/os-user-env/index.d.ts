@@ -11,4 +11,3 @@ export declare function persistUserEnv(entries: Readonly<Record<string, string>>
 export declare function removeUserEnv(name: string): void;
 export { persistWindowsUserEnv, removeWindowsUserEnv } from './windows.ts';
 export { persistMacosUserEnv, removeMacosUserEnv } from './macos.ts';
-//# sourceMappingURL=index.d.ts.map

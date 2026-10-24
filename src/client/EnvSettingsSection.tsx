@@ -1,9 +1,9 @@
-/** Settings section: list / upsert / remove `$DSH_HOME/.env` entries. */
+/** Settings section: list / upsert / remove `$DSH_HOME/.env` entries + CLI PATH status. */
 
 import { useCallback, useEffect, useState } from 'react'
 import { Button, Input } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { EnvEntry, EnvSnapshot } from '../types.ts'
+import type { CliStatus, EnvEntry, EnvSnapshot } from '../types.ts'
 import type { EnvSettingsKey } from './locales.ts'
 import css from './EnvSettingsSection.module.css'
 
@@ -15,6 +15,10 @@ export interface EnvSettingsInjected {
   readonly upsert: (name: string, value: string) => Promise<EnvSnapshot>
   /** Delete one entry. */
   readonly remove: (name: string) => Promise<EnvSnapshot>
+  /** Load CLI PATH comparison for this Host. */
+  readonly cliStatus: () => Promise<CliStatus>
+  /** Install expected CLI onto user PATH / macOS symlink. */
+  readonly cliInstall: () => Promise<CliStatus>
 }
 
 /** Props bound by the slot renderer. */
@@ -29,14 +33,24 @@ const NAME_OK = /^[A-Za-z_][A-Za-z0-9_]*$/u
  * Render the environment-variables settings page.
  * @param props - locale `t` and Host remote callbacks.
  */
-export function EnvSettingsSection({ t, load, upsert, remove }: EnvSettingsSectionProps) {
+export function EnvSettingsSection({ t, load, upsert, remove, cliStatus, cliInstall }: EnvSettingsSectionProps) {
   const [snapshot, setSnapshot] = useState<EnvSnapshot | undefined>()
+  const [cli, setCli] = useState<CliStatus | undefined>()
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [newName, setNewName] = useState('')
   const [newValue, setNewValue] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | undefined>()
+  const [cliNotice, setCliNotice] = useState<string | undefined>()
   const [nameError, setNameError] = useState(false)
+
+  const refreshCli = useCallback(async () => {
+    try {
+      setCli(await cliStatus())
+    } catch {
+      setCli(undefined)
+    }
+  }, [cliStatus])
 
   const refresh = useCallback(async () => {
     setBusy(true)
@@ -47,12 +61,13 @@ export function EnvSettingsSection({ t, load, upsert, remove }: EnvSettingsSecti
       const nextDrafts: Record<string, string> = {}
       for (const entry of next.entries) nextDrafts[entry.name] = entry.value
       setDrafts(nextDrafts)
+      await refreshCli()
     } catch (_error) {
       setError(t('error'))
     } finally {
       setBusy(false)
     }
-  }, [load, t])
+  }, [load, refreshCli, t])
 
   useEffect(() => { void refresh() }, [refresh])
 
@@ -87,12 +102,64 @@ export function EnvSettingsSection({ t, load, upsert, remove }: EnvSettingsSecti
     })
   }
 
+  const onInstallCli = (): void => {
+    setBusy(true)
+    setError(undefined)
+    setCliNotice(undefined)
+    void (async () => {
+      try {
+        const next = await cliInstall()
+        setCli(next)
+        setCliNotice(t('cliInstallOk'))
+      } catch {
+        setError(t('cliInstallError'))
+      } finally {
+        setBusy(false)
+      }
+    })()
+  }
+
+  const cliReasonCopy = (status: CliStatus): string | undefined => {
+    if (status.reason === 'could-not-resolve-expected-cli') return t('cliReasonUnresolved')
+    if (status.reason === 'unsupported-platform') return t('cliReasonUnsupported')
+    return undefined
+  }
+
   return (
     <div className={css.section}>
       <h2 className={css.heading}>{t('title')}</h2>
       <p className={css.intro}>{t('intro')}</p>
       {snapshot !== undefined && <p className={css.path}>{t('path', { path: snapshot.path })}</p>}
       <p className={css.hint}>{t('osSync')}</p>
+
+      <div className={css.cli}>
+        <h3 className={css.cliHeading}>{t('cliTitle')}</h3>
+        <p className={css.hint}>{t('cliIntro')}</p>
+        {cli === undefined && busy ? <p className={css.status}>{t('loading')}</p> : null}
+        {cli !== undefined ? (
+          <>
+            <p className={css.path}>
+              {cli.activePath === null ? t('cliActiveMissing') : t('cliActive', { path: cli.activePath })}
+            </p>
+            <p className={css.path}>
+              {cli.expectedPath === null ? t('cliExpectedMissing') : t('cliExpected', { path: cli.expectedPath })}
+            </p>
+            {cli.matches ? <p className={css.hint}>{t('cliMatches')}</p> : null}
+            {cliReasonCopy(cli) !== undefined ? <p className={css.hint}>{cliReasonCopy(cli)}</p> : null}
+            {cli.canInstall ? (
+              <div className={css.cliActions}>
+                <p className={css.hint}>{t('cliInstallHint')}</p>
+                {cli.platform === 'darwin' ? <p className={css.hint}>{t('cliMacConflict')}</p> : null}
+                <Button variant="primary" size="sm" disabled={busy} onClick={onInstallCli}>
+                  {t('cliInstall')}
+                </Button>
+              </div>
+            ) : null}
+            {cliNotice !== undefined ? <p className={css.status} data-tone="ok" role="status">{cliNotice}</p> : null}
+          </>
+        ) : null}
+      </div>
+
       {error !== undefined && <p className={css.status} data-tone="error" role="status">{error}</p>}
       {snapshot === undefined && busy ? <p className={css.status}>{t('loading')}</p> : null}
       {snapshot !== undefined && snapshot.entries.length === 0 ? <p className={css.empty}>{t('empty')}</p> : null}

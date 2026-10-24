@@ -4,8 +4,8 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import { envFilePath } from './env-file.ts';
-import type { EnvSnapshot } from './types.ts';
-export type { EnvEntry, EnvSnapshot } from './types.ts';
+import type { CliStatus, EnvSnapshot } from './types.ts';
+export type { CliStatus, EnvEntry, EnvSnapshot } from './types.ts';
 declare module '@deepseek-ai/cordis' {
     interface Context {
         /** `$DSH_HOME/.env` management remote. */
@@ -21,6 +21,10 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
         /** Empty value rejected on upsert. */
         'custom-env/invalid-value': {
             readonly name: string;
+        };
+        /** CLI PATH / symlink install failed. */
+        'custom-env/cli-install-failed': {
+            readonly code: string;
         };
     }
 }
@@ -45,7 +49,16 @@ export default class CustomEnvController extends TypertRemoteService {
      * @returns updated snapshot.
      */
     remove(name: string): Promise<EnvSnapshot>;
+    /**
+     * Compare the user-environment `dsh` with the launcher expected for this Host.
+     * @returns active path, expected path, and whether Install should be offered.
+     */
+    cliStatus(): Promise<CliStatus>;
+    /**
+     * Install the expected CLI onto the Windows user PATH or as `/usr/local/bin/dsh` on macOS.
+     * @returns refreshed status after install.
+     */
+    cliInstall(): Promise<CliStatus>;
 }
 /** Re-export path helper for tests. */
 export { envFilePath };
-//# sourceMappingURL=index.d.ts.map

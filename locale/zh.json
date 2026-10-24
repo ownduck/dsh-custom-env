@@ -1,4 +1,4 @@
 {
   "meta.title": "环境变量",
-  "meta.description": "编辑 $DSH_HOME/.env，并同步到 Host 进程与操作系统用户环境（Windows 与 macOS）。"
+  "meta.description": "编辑 $DSH_HOME/.env，同步 Host/操作系统用户环境，并在 Windows/macOS 为本 Host 安装 dsh CLI。"
 }

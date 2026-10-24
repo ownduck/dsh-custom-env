@@ -13,4 +13,3 @@ export declare function persistMacosUserEnv(entries: Readonly<Record<string, str
  * @param platform - Override for tests; defaults to `process.platform`.
  */
 export declare function removeMacosUserEnv(name: string, platform?: NodeJS.Platform): void;
-//# sourceMappingURL=macos.d.ts.map

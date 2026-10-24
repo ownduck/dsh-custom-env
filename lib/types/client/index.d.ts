@@ -15,4 +15,3 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
  * @returns disposer joining UI and Remote withdrawal.
  */
 export declare function apply(ctx: Context): Promise<() => Promise<void>>;
-//# sourceMappingURL=index.d.ts.map

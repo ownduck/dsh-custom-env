@@ -41,6 +41,16 @@ function registerUi(ctx: Context): void {
         if (!result.ok) throw result.error
         return result.value
       },
+      cliStatus: async () => {
+        const result = await ctx.remote.customEnv.cliStatus()
+        if (!result.ok) throw result.error
+        return result.value
+      },
+      cliInstall: async () => {
+        const result = await ctx.remote.customEnv.cliInstall()
+        if (!result.ok) throw result.error
+        return result.value
+      },
     }),
   }, EnvSettingsSection))
 }

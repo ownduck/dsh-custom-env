@@ -4,12 +4,13 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { cliInstall as installCli, cliStatus as readCliStatus } from './cli-path/index.ts'
 import { envFilePath, listEnvEntries, loadEnvMap, removeEnvEntry, upsertEnvEntry } from './env-file.ts'
 import { isWritableEnvName } from './names.ts'
 import { persistUserEnv, removeUserEnv } from './os-user-env/index.ts'
-import type { EnvSnapshot } from './types.ts'
+import type { CliStatus, EnvSnapshot } from './types.ts'
 
-export type { EnvEntry, EnvSnapshot } from './types.ts'
+export type { CliStatus, EnvEntry, EnvSnapshot } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -24,6 +25,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'custom-env/invalid-name': { readonly name: string }
     /** Empty value rejected on upsert. */
     'custom-env/invalid-value': { readonly name: string }
+    /** CLI PATH / symlink install failed. */
+    'custom-env/cli-install-failed': { readonly code: string }
   }
 }
 
@@ -117,6 +120,32 @@ export default class CustomEnvController extends TypertRemoteService {
     }
     clearLive(name)
     return this.list()
+  }
+
+  /**
+   * Compare the user-environment `dsh` with the launcher expected for this Host.
+   * @returns active path, expected path, and whether Install should be offered.
+   */
+  @Remote('cliStatus')
+  async cliStatus(): Promise<CliStatus> {
+    return readCliStatus()
+  }
+
+  /**
+   * Install the expected CLI onto the Windows user PATH or as `/usr/local/bin/dsh` on macOS.
+   * @returns refreshed status after install.
+   */
+  @Remote('cliInstall')
+  async cliInstall(): Promise<CliStatus> {
+    try {
+      return await installCli()
+    } catch (error) {
+      const code = typeof (error as { code?: unknown }).code === 'string'
+        ? (error as { code: string }).code
+        : 'EIO'
+      const message = error instanceof Error ? error.message : String(error)
+      throw new RemoteError('custom-env/cli-install-failed', message, { code }, { cause: error })
+    }
   }
 }
 

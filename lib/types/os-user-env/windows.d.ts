@@ -16,4 +16,3 @@ export declare function persistWindowsUserEnv(entries: Readonly<Record<string, s
  * @param platform - Override for tests; defaults to `process.platform`.
  */
 export declare function removeWindowsUserEnv(name: string, platform?: NodeJS.Platform): void;
-//# sourceMappingURL=windows.d.ts.map

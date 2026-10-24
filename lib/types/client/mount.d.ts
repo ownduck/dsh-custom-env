@@ -10,4 +10,3 @@ export declare const inject: readonly ["remote", "slots", "locale"];
  * @returns disposer that removes both contributions.
  */
 export declare function mountCustomEnv(ctx: Context, contribution: TypertRemoteContribution): Promise<() => Promise<void>>;
-//# sourceMappingURL=mount.d.ts.map

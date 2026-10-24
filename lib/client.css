@@ -1,0 +1,84 @@
+/* src/client/EnvSettingsSection.module.css */
+.EnvSettingsSection_section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 760px;
+  color: var(--dsw-alias-label-primary);
+}
+.EnvSettingsSection_heading {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.EnvSettingsSection_intro,
+.EnvSettingsSection_path,
+.EnvSettingsSection_hint,
+.EnvSettingsSection_empty,
+.EnvSettingsSection_status {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dsw-alias-label-tertiary);
+}
+.EnvSettingsSection_status[data-tone=error] {
+  color: var(--dsw-alias-label-danger, #c62828);
+}
+.EnvSettingsSection_status[data-tone=ok] {
+  color: var(--dsw-alias-label-success, #2e7d32);
+}
+.EnvSettingsSection_cli {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid var(--dsw-alias-border-subtle, rgba(127, 127, 127, 0.25));
+  border-bottom: 1px solid var(--dsw-alias-border-subtle, rgba(127, 127, 127, 0.25));
+}
+.EnvSettingsSection_cliHeading {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.EnvSettingsSection_cliActions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.EnvSettingsSection_list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.EnvSettingsSection_row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(160px, 2fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.EnvSettingsSection_actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.EnvSettingsSection_add {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(160px, 2fr) auto;
+  gap: 8px;
+  align-items: end;
+  margin-top: 4px;
+}
+.EnvSettingsSection_field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.EnvSettingsSection_field label {
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+/*# sourceMappingURL=client.css.map */
