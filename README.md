@@ -75,13 +75,13 @@ dsh --profile web --dump-config
 ### From npm (optional, after publish)
 
 ```powershell
-dsh plugin --profile desktop add dsh-custom-env@latest --registry=https://registry.npmjs.org/
+dsh plugin --profile desktop add @woosau/dsh-custom-env@latest --registry=https://registry.npmjs.org/
 ```
 
 ## Uninstall / reinstall
 
 ```powershell
-dsh plugin --profile desktop remove dsh-custom-env
+dsh plugin --profile desktop remove @woosau/dsh-custom-env
 dsh plugin --profile desktop add github:ownduck/dsh-custom-env
 ```
 
@@ -124,7 +124,7 @@ Tests live under [`tests/`](tests/) (`env-file.spec.ts`, `cli-path.spec.ts`). Do
 | Channel | Enough for users? | Install command |
 | --- | --- | --- |
 | **GitHub only** | Yes | `dsh plugin add github:ownduck/dsh-custom-env` |
-| **npmjs** | Optional | `dsh plugin add dsh-custom-env` |
+| **npmjs** | Optional | `dsh plugin add @woosau/dsh-custom-env` |
 
 Pushing to GitHub is enough to share and install. Publishing to npmjs is optional convenience (shorter name, version tags, npm badges), similar to community plugins that also publish `@scope/name` on the registry.
 

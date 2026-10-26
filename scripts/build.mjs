@@ -111,7 +111,7 @@ await esbuild.build({
   }],
   banner: {
     js: [
-      'window.__ModuleLoader__.load({ id: "dsh-custom-env", factory: (require) => {',
+      'window.__ModuleLoader__.load({ id: "@woosau/dsh-custom-env", factory: (require) => {',
       'var module = { exports: {} };',
       'var exports = module.exports;',
       'Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });',

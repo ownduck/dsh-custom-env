@@ -1,5 +1,5 @@
 {
-  "name": "dsh-custom-env",
+  "name": "@woosau/dsh-custom-env",
   "description": "DSH plugin: manage $DSH_HOME/.env from Settings, sync Host process.env and Windows/macOS user environment",
   "version": "0.1.0",
   "type": "module",

@@ -75,13 +75,13 @@ dsh --profile web --dump-config
 ### 从 npm 安装（可选，发布后）
 
 ```powershell
-dsh plugin --profile desktop add dsh-custom-env@latest --registry=https://registry.npmjs.org/
+dsh plugin --profile desktop add @woosau/dsh-custom-env@latest --registry=https://registry.npmjs.org/
 ```
 
 ## 卸载 / 重装
 
 ```powershell
-dsh plugin --profile desktop remove dsh-custom-env
+dsh plugin --profile desktop remove @woosau/dsh-custom-env
 dsh plugin --profile desktop add github:ownduck/dsh-custom-env
 ```
 
@@ -124,7 +124,7 @@ pnpm build  # 重建 lib/（client 打包依赖旁路的 vertax-work esbuild）
 | 渠道 | 够不够用 | 安装命令 |
 | --- | --- | --- |
 | **只推 GitHub** | 够 | `dsh plugin add github:ownduck/dsh-custom-env` |
-| **再发 npmjs** | 可选 | `dsh plugin add dsh-custom-env` |
+| **再发 npmjs** | 可选 | `dsh plugin add @woosau/dsh-custom-env` |
 
 推到 GitHub 即可分享与安装。发 npmjs 只是可选便利（短包名、版本号、徽章），与社区插件同时维护 GitHub + npm 的做法类似。
 
