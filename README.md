@@ -24,22 +24,19 @@ On save, values are applied to the Host `process.env` immediately and synced to 
 
 ## Installation
 
-This repository ships a ready-to-run `lib/`. You do **not** need to publish to npmjs to install from GitHub.
+Published on npm as `@woosau/dsh-custom-env`. GitHub install still works without npm.
 
 ### Desktop (recommended)
 
 Close Desktop / VertaxWork first if `plugin` fails with `EPERM` on the profile `package.json`.
 
 ```powershell
-dsh plugin --profile desktop add github:ownduck/dsh-custom-env
+dsh plugin --profile desktop add @woosau/dsh-custom-env
 ```
 
-This plugin depends on `koffi` (native). If pnpm blocks its install script, add to the profile’s `pnpm-workspace.yaml`, then re-run `add`:
+From GitHub instead: `dsh plugin --profile desktop add github:ownduck/dsh-custom-env`
 
-```yaml
-allowBuilds:
-  koffi: true
-```
+This plugin depends on `koffi` (native). GitHub installs may need `allowBuilds.koffi: true` in the profile `pnpm-workspace.yaml` before re-running `add`. npm installs usually ship prebuilt binaries and skip that step.
 
 Restart Desktop. Open **Settings → Environment**.
 
@@ -48,18 +45,18 @@ Restart Desktop. Open **Settings → Environment**.
 ```powershell
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
-dsh plugin --profile web add github:ownduck/dsh-custom-env
+dsh plugin --profile web add @woosau/dsh-custom-env
 dsh --profile web --dump-config
 ```
 
-Equivalent: `dsh plugin --profile web add https://github.com/ownduck/dsh-custom-env.git`
+GitHub: `dsh plugin --profile web add github:ownduck/dsh-custom-env`
 
-The dump should contain a `# == dsh-custom-env` layer and a `custom-env` plugin row. Restart DSH Web and hard-refresh the browser.
+The dump should contain a `# == dsh-custom-env` / `@woosau/dsh-custom-env` layer and a `custom-env` plugin row. Restart DSH Web and hard-refresh the browser.
 
 ### Ask an agent to install it
 
 ```text
-Install the DSH plugin github:ownduck/dsh-custom-env into my local desktop profile by running: dsh plugin --profile desktop add github:ownduck/dsh-custom-env. If pnpm reports ignored build scripts for koffi, add allowBuilds.koffi: true under the profile pnpm-workspace.yaml and re-run add. Then confirm Settings → Environment appears after restarting Desktop.
+Install the DSH plugin @woosau/dsh-custom-env into my local desktop profile by running: dsh plugin --profile desktop add @woosau/dsh-custom-env. Then confirm Settings → Environment appears after restarting Desktop.
 ```
 
 ### From a local clone (`file:` / `.`)
@@ -72,7 +69,7 @@ dsh plugin --profile desktop add .
 dsh --profile web --dump-config
 ```
 
-### From npm (optional, after publish)
+### From npm (explicit registry)
 
 ```powershell
 dsh plugin --profile desktop add @woosau/dsh-custom-env@latest --registry=https://registry.npmjs.org/
@@ -82,7 +79,7 @@ dsh plugin --profile desktop add @woosau/dsh-custom-env@latest --registry=https:
 
 ```powershell
 dsh plugin --profile desktop remove @woosau/dsh-custom-env
-dsh plugin --profile desktop add github:ownduck/dsh-custom-env
+dsh plugin --profile desktop add @woosau/dsh-custom-env
 ```
 
 For a `file:` / local checkout, rebuild `lib/` after source changes, then restart DSH. Re-run `plugin add` only when `package.json` or `cordis.patch.yml` changed.
@@ -124,7 +121,7 @@ Tests live under [`tests/`](tests/) (`env-file.spec.ts`, `cli-path.spec.ts`). Do
 | Channel | Enough for users? | Install command |
 | --- | --- | --- |
 | **GitHub only** | Yes | `dsh plugin add github:ownduck/dsh-custom-env` |
-| **npmjs** | Optional | `dsh plugin add @woosau/dsh-custom-env` |
+| **npmjs** | Recommended | `dsh plugin add @woosau/dsh-custom-env` |
 
 Pushing to GitHub is enough to share and install. Publishing to npmjs is optional convenience (shorter name, version tags, npm badges), similar to community plugins that also publish `@scope/name` on the registry.
 

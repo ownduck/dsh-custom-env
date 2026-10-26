@@ -24,22 +24,19 @@
 
 ## 安装
 
-本仓库已包含可运行的 `lib/`。**不发 npmjs 也能从 GitHub 安装。**
+已发布到 npm：`@woosau/dsh-custom-env`。不发 npm 也可从 GitHub 安装。
 
 ### Desktop（推荐）
 
 若 `plugin` 报 profile `package.json` 的 `EPERM`，先退出 Desktop / VertaxWork。
 
 ```powershell
-dsh plugin --profile desktop add github:ownduck/dsh-custom-env
+dsh plugin --profile desktop add @woosau/dsh-custom-env
 ```
 
-本插件依赖原生包 `koffi`。若 pnpm 拦截其 install 脚本，在该 profile 的 `pnpm-workspace.yaml` 中加入后重新 `add`：
+GitHub 安装：`dsh plugin --profile desktop add github:ownduck/dsh-custom-env`
 
-```yaml
-allowBuilds:
-  koffi: true
-```
+本插件依赖原生包 `koffi`。从 GitHub 安装时，若 pnpm 拦截 install 脚本，需在 profile 的 `pnpm-workspace.yaml` 中设置 `allowBuilds.koffi: true` 后再 `add`。npm 安装一般自带预编译二进制，通常不必这一步。
 
 重启 Desktop，打开 **设置 → 环境变量**。
 
@@ -48,18 +45,18 @@ allowBuilds:
 ```powershell
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
-dsh plugin --profile web add github:ownduck/dsh-custom-env
+dsh plugin --profile web add @woosau/dsh-custom-env
 dsh --profile web --dump-config
 ```
 
-等价：`dsh plugin --profile web add https://github.com/ownduck/dsh-custom-env.git`
+GitHub：`dsh plugin --profile web add github:ownduck/dsh-custom-env`
 
-配置输出中应出现 `# == dsh-custom-env` 层和 `custom-env` 插件行。然后重启 DSH Web，并在浏览器硬刷新。
+配置输出中应出现 `# == dsh-custom-env` / `@woosau/dsh-custom-env` 层和 `custom-env` 插件行。然后重启 DSH Web，并在浏览器硬刷新。
 
 ### 让 Agent 帮你安装
 
 ```text
-请将 DSH 插件 github:ownduck/dsh-custom-env 安装到本机 desktop profile，执行：dsh plugin --profile desktop add github:ownduck/dsh-custom-env。若 pnpm 提示忽略 koffi 的 build scripts，在该 profile 的 pnpm-workspace.yaml 中加入 allowBuilds.koffi: true 后重新 add。重启 Desktop 后确认「设置 → 环境变量」可用。
+请将 DSH 插件 @woosau/dsh-custom-env 安装到本机 desktop profile，执行：dsh plugin --profile desktop add @woosau/dsh-custom-env。重启 Desktop 后确认「设置 → 环境变量」可用。
 ```
 
 ### 从本地克隆安装（`file:` / `.`）
@@ -72,7 +69,7 @@ dsh plugin --profile desktop add .
 dsh --profile web --dump-config
 ```
 
-### 从 npm 安装（可选，发布后）
+### 从 npm 安装（指定 registry）
 
 ```powershell
 dsh plugin --profile desktop add @woosau/dsh-custom-env@latest --registry=https://registry.npmjs.org/
@@ -82,7 +79,7 @@ dsh plugin --profile desktop add @woosau/dsh-custom-env@latest --registry=https:
 
 ```powershell
 dsh plugin --profile desktop remove @woosau/dsh-custom-env
-dsh plugin --profile desktop add github:ownduck/dsh-custom-env
+dsh plugin --profile desktop add @woosau/dsh-custom-env
 ```
 
 本地 `file:` 开发：改 `src` 后重建 `lib/`，再重启 DSH。只有改了 `package.json` / `cordis.patch.yml` 才需要重新 `plugin add`。
@@ -124,7 +121,7 @@ pnpm build  # 重建 lib/（client 打包依赖旁路的 vertax-work esbuild）
 | 渠道 | 够不够用 | 安装命令 |
 | --- | --- | --- |
 | **只推 GitHub** | 够 | `dsh plugin add github:ownduck/dsh-custom-env` |
-| **再发 npmjs** | 可选 | `dsh plugin add @woosau/dsh-custom-env` |
+| **npmjs** | 推荐 | `dsh plugin add @woosau/dsh-custom-env` |
 
 推到 GitHub 即可分享与安装。发 npmjs 只是可选便利（短包名、版本号、徽章），与社区插件同时维护 GitHub + npm 的做法类似。
 
