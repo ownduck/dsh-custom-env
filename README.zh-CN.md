@@ -20,14 +20,30 @@
 ## 前置条件
 
 - 已安装可用的 DeepSeek Harness，且终端里能运行 `dsh`（CLI 或 Desktop 自带 CLI）
-- 下文示例使用 `web` profile；请换成你的目标 profile
-- `desktop` profile 由 Electron 独占——请用应用内插件管理，或手动改该 profile 的 `package.json`
+- 选择 profile：`desktop`（Electron）或 `web`（浏览器）。下文两种都有。
 
 ## 安装
 
 本仓库已包含可运行的 `lib/`。**不发 npmjs 也能从 GitHub 安装。**
 
-### 从 GitHub 安装（未发 npm 时推荐）
+### Desktop（推荐）
+
+若 `plugin` 报 profile `package.json` 的 `EPERM`，先退出 Desktop / VertaxWork。
+
+```powershell
+dsh plugin --profile desktop add github:ownduck/dsh-custom-env
+```
+
+本插件依赖原生包 `koffi`。若 pnpm 拦截其 install 脚本，在该 profile 的 `pnpm-workspace.yaml` 中加入后重新 `add`：
+
+```yaml
+allowBuilds:
+  koffi: true
+```
+
+重启 Desktop，打开 **设置 → 环境变量**。
+
+### Web
 
 ```powershell
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -36,18 +52,14 @@ dsh plugin --profile web add github:ownduck/dsh-custom-env
 dsh --profile web --dump-config
 ```
 
-等价写法：
-
-```powershell
-dsh plugin --profile web add https://github.com/ownduck/dsh-custom-env.git
-```
+等价：`dsh plugin --profile web add https://github.com/ownduck/dsh-custom-env.git`
 
 配置输出中应出现 `# == dsh-custom-env` 层和 `custom-env` 插件行。然后重启 DSH Web，并在浏览器硬刷新。
 
 ### 让 Agent 帮你安装
 
 ```text
-请将 DSH 插件 github:ownduck/dsh-custom-env 安装到本机 web profile，执行：dsh plugin --profile web add github:ownduck/dsh-custom-env。安装后执行 dsh --profile web --dump-config，确认配置包含 dsh-custom-env / custom-env，并告诉我如何重新加载 DSH，以及如何打开「设置 → 环境变量」。
+请将 DSH 插件 github:ownduck/dsh-custom-env 安装到本机 desktop profile，执行：dsh plugin --profile desktop add github:ownduck/dsh-custom-env。若 pnpm 提示忽略 koffi 的 build scripts，在该 profile 的 pnpm-workspace.yaml 中加入 allowBuilds.koffi: true 后重新 add。重启 Desktop 后确认「设置 → 环境变量」可用。
 ```
 
 ### 从本地克隆安装（`file:` / `.`）
@@ -55,24 +67,22 @@ dsh plugin --profile web add https://github.com/ownduck/dsh-custom-env.git
 ```powershell
 git clone https://github.com/ownduck/dsh-custom-env.git
 cd dsh-custom-env
-dsh plugin --profile web add .
-# 或：dsh plugin --profile web add file:F:/path/to/dsh-custom-env
+dsh plugin --profile desktop add .
+# 或：dsh plugin --profile web add .
 dsh --profile web --dump-config
 ```
 
 ### 从 npm 安装（可选，发布后）
 
-若已发布到 npm：
-
 ```powershell
-dsh plugin --profile web add dsh-custom-env@latest --registry=https://registry.npmjs.org/
+dsh plugin --profile desktop add dsh-custom-env@latest --registry=https://registry.npmjs.org/
 ```
 
 ## 卸载 / 重装
 
 ```powershell
-dsh plugin --profile web remove dsh-custom-env
-dsh plugin --profile web add github:ownduck/dsh-custom-env
+dsh plugin --profile desktop remove dsh-custom-env
+dsh plugin --profile desktop add github:ownduck/dsh-custom-env
 ```
 
 本地 `file:` 开发：改 `src` 后重建 `lib/`，再重启 DSH。只有改了 `package.json` / `cordis.patch.yml` 才需要重新 `plugin add`。
