@@ -17,10 +17,8 @@ if errorlevel 1 (
   for /f "delims=" %%u in ('npm whoami') do echo Logged in as %%u
 )
 
-if "%OPENCLI_NPM_TAG%"=="" (set TAG=latest) else (set TAG=%OPENCLI_NPM_TAG%)
-
-echo Publishing with tag %TAG%...
-call npm publish --access public --tag %TAG%
+echo Publishing with tag latest...
+call npm publish --access public --tag latest
 if errorlevel 1 (
   echo Publish failed.
   pause
