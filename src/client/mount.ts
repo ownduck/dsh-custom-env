@@ -9,16 +9,15 @@ import type { TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import { EnvSettingsSection } from './EnvSettingsSection.tsx'
 import { en, NS, zh } from './locales.ts'
 
-/** Services required to mount the optional Remote and settings page. */
 export const inject = ['remote', 'slots', 'locale'] as const
 
-/**
- * Register locale dictionaries and the Environment settings section.
- * @param ctx - browser context that already has `remote.customEnv`.
- */
 function registerUi(ctx: Context): void {
   ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'custom-env: dictionaries')
   const t = ctx.locale.bind(NS)
+  const call = async <T>(result: { ok: true; value: T } | { ok: false; error: unknown }): Promise<T> => {
+    if (!result.ok) throw result.error
+    return result.value
+  }
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'env',
@@ -26,36 +25,12 @@ function registerUi(ctx: Context): void {
     label: () => t('nav'),
     locale: NS,
     inject: () => ({
-      load: async () => {
-        const result = await ctx.remote.customEnv.list()
-        if (!result.ok) throw result.error
-        return result.value
-      },
-      upsert: async (name: string, value: string) => {
-        const result = await ctx.remote.customEnv.upsert(name, value)
-        if (!result.ok) throw result.error
-        return result.value
-      },
-      remove: async (name: string) => {
-        const result = await ctx.remote.customEnv.deleteEntry(name)
-        if (!result.ok) throw result.error
-        return result.value
-      },
-      restore: async (name: string) => {
-        const result = await ctx.remote.customEnv.restore(name)
-        if (!result.ok) throw result.error
-        return result.value
-      },
-      cliStatus: async () => {
-        const result = await ctx.remote.customEnv.cliStatus()
-        if (!result.ok) throw result.error
-        return result.value
-      },
-      cliInstall: async () => {
-        const result = await ctx.remote.customEnv.cliInstall()
-        if (!result.ok) throw result.error
-        return result.value
-      },
+      load: async () => call(await ctx.remote.customEnv.list()),
+      upsert: async (id: string, name: string, value: string) => call(await ctx.remote.customEnv.upsert(id, name, value)),
+      remove: async (id: string) => call(await ctx.remote.customEnv.deleteEntry(id)),
+      restore: async (id: string) => call(await ctx.remote.customEnv.restore(id)),
+      cliStatus: async () => call(await ctx.remote.customEnv.cliStatus()),
+      cliInstall: async () => call(await ctx.remote.customEnv.cliInstall()),
     }),
   }, EnvSettingsSection))
 }

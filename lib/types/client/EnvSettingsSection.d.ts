@@ -1,26 +1,19 @@
-/** Settings section: draft confirm/cancel for `$DSH_HOME/.env` + CLI PATH status. */
+/** Settings section: `$DSH_HOME/.env` editor + global `dsh` path. */
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type { CliStatus, EnvSnapshot } from '../types.ts';
 import type { EnvSettingsKey } from './locales.ts';
-/** Callbacks injected from the Client apply closure. */
 export interface EnvSettingsInjected {
-    /** Load the current snapshot from the Host. */
     readonly load: () => Promise<EnvSnapshot>;
-    /** Create or replace one entry (Confirm only). */
-    readonly upsert: (name: string, value: string) => Promise<EnvSnapshot>;
-    /** Delete one entry. */
-    readonly remove: (name: string) => Promise<EnvSnapshot>;
-    /** Write a modified entry back to the Host-start baseline. */
-    readonly restore: (name: string) => Promise<EnvSnapshot>;
-    /** Load CLI PATH comparison for this Host. */
+    /** Create (`id === ""`) or update/rename one row by stable id. */
+    readonly upsert: (id: string, name: string, value: string) => Promise<EnvSnapshot>;
+    readonly remove: (id: string) => Promise<EnvSnapshot>;
+    readonly restore: (id: string) => Promise<EnvSnapshot>;
     readonly cliStatus: () => Promise<CliStatus>;
-    /** Install expected CLI onto user PATH / macOS symlink. */
     readonly cliInstall: () => Promise<CliStatus>;
 }
-/** Props bound by the slot renderer. */
 export type EnvSettingsSectionProps = PropsRuntime<'settings.section'> & PropsLocale<'settings.env'> & InjectFace<EnvSettingsInjected>;
 /**
- * Render the environment-variables settings page.
+ * Render the environment settings page.
  * @param props - locale `t` and Host remote callbacks.
  */
 export declare function EnvSettingsSection({ t, load, upsert, remove, restore, cliStatus, cliInstall, }: EnvSettingsSectionProps): any;

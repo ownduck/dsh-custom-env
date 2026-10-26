@@ -2,7 +2,7 @@
 /** Dictionary namespace owned by this plugin. */
 export declare const NS = "settings.env";
 /** Keys in the environment settings dictionaries. */
-export type EnvSettingsKey = 'nav' | 'title' | 'intro' | 'path' | 'empty' | 'name' | 'value' | 'confirm' | 'cancel' | 'remove' | 'restore' | 'namePlaceholder' | 'valuePlaceholder' | 'loading' | 'error' | 'invalidName' | 'osSync' | 'restartRequired' | 'restartRequiredAdded' | 'cliTitle' | 'cliIntro' | 'cliActive' | 'cliActiveMissing' | 'cliExpected' | 'cliExpectedMissing' | 'cliMatches' | 'cliInstall' | 'cliInstallHint' | 'cliMacConflict' | 'cliInstallOk' | 'cliInstallError' | 'cliReasonUnresolved' | 'cliReasonUnsupported';
+export type EnvSettingsKey = 'nav' | 'title' | 'empty' | 'name' | 'value' | 'actions' | 'confirm' | 'cancel' | 'remove' | 'removeConfirmTitle' | 'removeConfirm' | 'restore' | 'close' | 'namePlaceholder' | 'valuePlaceholder' | 'loading' | 'error' | 'invalidName' | 'restartRequired' | 'cliTitle' | 'cliActiveMissing' | 'cliInstall' | 'cliMacConflict' | 'cliInstallError' | 'cliReasonUnresolved' | 'cliReasonUnsupported';
 /** English copy. */
 export declare const en: Record<EnvSettingsKey, string>;
 /** Chinese copy. */

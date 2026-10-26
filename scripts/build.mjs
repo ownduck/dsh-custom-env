@@ -84,12 +84,17 @@ await esbuild.build({
       const { readFileSync } = require('node:fs')
       build.onLoad({ filter: /\.module\.css$/ }, (args) => {
         const css = readFileSync(args.path, 'utf8')
+        const names = new Set()
+        for (const match of css.matchAll(/\.([A-Za-z_][\w-]*)/g)) names.add(match[1])
         const locals = Object.create(null)
-        const transformed = css.replace(/\.([A-Za-z_][\w-]*)\s*\{/g, (_match, name) => {
-          const local = `EnvSettingsSection_${name}`
-          locals[name] = local
-          return `.${local}{`
-        })
+        for (const name of names) locals[name] = `EnvSettingsSection_${name}`
+        let transformed = css
+        for (const name of names) {
+          transformed = transformed.replaceAll(
+            new RegExp(`\\.${name}(?![\\w-])`, 'g'),
+            `.${locals[name]}`,
+          )
+        }
         const js = [
           `const css = ${JSON.stringify(transformed)};`,
           `if (typeof document !== "undefined" && !document.getElementById("dsh-custom-env-css")) {`,

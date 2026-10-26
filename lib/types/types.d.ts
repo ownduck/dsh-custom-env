@@ -1,39 +1,44 @@
-/** Pending state relative to the Host-start baseline. */
+/** Session types and Host-start baseline classification. */
 export type EnvEntryKind = 'unchanged' | 'modified' | 'added';
+/** Host-start original name and value for one row id. */
+export interface BaselineRow {
+    readonly name: string;
+    readonly value: string;
+}
 /** One editable environment variable row. */
 export interface EnvEntry {
-    /** Variable name. */
+    /** Stable row id; survives renames. */
+    readonly id: string;
     readonly name: string;
-    /** Variable value. */
     readonly value: string;
-    /** Relation to the Host-start baseline. */
     readonly kind: EnvEntryKind;
-    /** Baseline value when `kind === 'modified'`; otherwise `null`. */
+    /** Host-start original value when `kind === 'modified'`; otherwise `null`. */
     readonly previous: string | null;
 }
 /** Snapshot returned by `customEnv/list`. */
 export interface EnvSnapshot {
-    /** Absolute path of `$DSH_HOME/.env`. */
     readonly path: string;
-    /** Whether the file exists on disk. */
     readonly exists: boolean;
-    /** Entries currently stored in the file (empty values omitted). */
     readonly entries: readonly EnvEntry[];
 }
 /** Snapshot returned by `customEnv/cliStatus` and `cliInstall`. */
 export interface CliStatus {
-    /** Host platform. */
     readonly platform: string;
-    /** First `dsh` found on the user environment PATH, if any. */
     readonly activePath: string | null;
-    /** Expected launcher for this Host, if resolved. */
     readonly expectedPath: string | null;
-    /** Expected bin directory (Windows PATH entry). */
     readonly expectedDirectory: string | null;
-    /** Whether active matches expected. */
     readonly matches: boolean;
-    /** Whether the Install button should be shown. */
     readonly canInstall: boolean;
-    /** Why install is unavailable or paths could not be resolved. */
     readonly reason: string | null;
 }
+/**
+ * Classify one row against the Host-start baseline by stable id.
+ * @param id - row id.
+ * @param name - current file name.
+ * @param value - current file value.
+ * @param baselineById - Host-start originals.
+ */
+export declare function classifyEntry(id: string, name: string, value: string, baselineById: ReadonlyMap<string, BaselineRow>): {
+    readonly kind: EnvEntryKind;
+    readonly previous: string | null;
+};
