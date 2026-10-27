@@ -22,7 +22,7 @@ function registerUi(ctx: Context): void {
     name: 'settings.section',
     id: 'env',
     order: 25,
-    label: () => t('nav'),
+    label: () => t('panel.nav'),
     locale: NS,
     inject: () => ({
       load: async () => call(await ctx.remote.customEnv.list()),

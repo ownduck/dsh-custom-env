@@ -1,4 +1,4 @@
 {
   "meta.title": "Environment variables",
-  "meta.description": "Edit $DSH_HOME/.env, sync Host/OS user environment, and install the dsh CLI for this Host on Windows/macOS."
+  "meta.description": "Edit $DSH_HOME/.env and sync the Host / OS user environment."
 }

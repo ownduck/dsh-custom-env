@@ -1,93 +1,81 @@
-/** Locale dictionaries for the environment-variables settings section. */
+/** `settings.env` namespace dictionaries for the environment settings section. */
 
 /** Dictionary namespace owned by this plugin. */
-export const NS = 'settings.env'
+export const NS = 'settings.env' as const
 
-/** Keys in the environment settings dictionaries. */
-export type EnvSettingsKey =
-  | 'nav'
-  | 'title'
-  | 'empty'
-  | 'name'
-  | 'value'
-  | 'actions'
-  | 'confirm'
-  | 'cancel'
-  | 'remove'
-  | 'removeConfirmTitle'
-  | 'removeConfirm'
-  | 'restore'
-  | 'close'
-  | 'namePlaceholder'
-  | 'valuePlaceholder'
-  | 'loading'
-  | 'error'
-  | 'invalidName'
-  | 'restartRequired'
-  | 'cliTitle'
-  | 'cliActiveMissing'
-  | 'cliInstall'
-  | 'cliMacConflict'
-  | 'cliInstallError'
-  | 'cliReasonUnresolved'
-  | 'cliReasonUnsupported'
+/** Simplified Chinese dictionary (the key-set source of truth). */
+export const zh = {
+  'panel.nav': '环境变量',
+  'panel.title': '环境变量',
+  'panel.empty': '暂无变量',
+  'panel.loading': '加载中…',
 
-/** English copy. */
-export const en: Record<EnvSettingsKey, string> = {
-  nav: 'Environment',
-  title: 'Environment',
-  empty: 'No variables',
-  name: 'Name',
-  value: 'Value',
-  actions: 'Actions',
-  confirm: 'Confirm',
-  cancel: 'Cancel',
-  remove: 'Delete',
-  removeConfirmTitle: 'Delete variable',
-  removeConfirm: 'Delete {name}?',
-  restore: 'Restore original',
-  close: 'Close',
-  namePlaceholder: 'MY_VAR',
-  valuePlaceholder: 'value',
-  loading: 'Loading…',
-  error: 'Update failed',
-  invalidName: 'Invalid name',
-  restartRequired: 'Restart the client',
-  cliTitle: 'dsh',
-  cliActiveMissing: 'Not found',
-  cliInstall: 'Install',
-  cliMacConflict: 'Replaces /usr/local/bin/dsh',
-  cliInstallError: 'Install failed',
-  cliReasonUnresolved: 'Install unavailable',
-  cliReasonUnsupported: 'Windows / macOS only',
-}
+  'field.name': '名称',
+  'field.value': '值',
+  'field.actions': '操作',
+  'field.namePlaceholder': 'MY_VAR',
+  'field.valuePlaceholder': '值',
 
-/** Chinese copy. */
-export const zh: Record<EnvSettingsKey, string> = {
-  nav: '环境变量',
-  title: '环境变量',
-  empty: '暂无变量',
-  name: '名称',
-  value: '值',
-  actions: '操作',
-  confirm: '确定',
-  cancel: '取消',
-  remove: '删除',
-  removeConfirmTitle: '删除变量',
-  removeConfirm: '删除 {name}？',
-  restore: '恢复原值',
-  close: '关闭',
-  namePlaceholder: 'MY_VAR',
-  valuePlaceholder: '值',
-  loading: '加载中…',
-  error: '更新失败',
-  invalidName: '名称无效',
-  restartRequired: '需重启客户端',
-  cliTitle: 'dsh',
-  cliActiveMissing: '未找到',
-  cliInstall: '安装',
-  cliMacConflict: '将替换 /usr/local/bin/dsh',
-  cliInstallError: '安装失败',
-  cliReasonUnresolved: '无法安装',
-  cliReasonUnsupported: '仅 Windows / macOS',
-}
+  'action.confirm': '确定',
+  'action.cancel': '取消',
+  'action.remove': '删除',
+  'action.removeConfirmTitle': '删除变量',
+  'action.removeConfirm': '删除 {name}？',
+  'action.restore': '恢复原值',
+  'action.close': '关闭',
+
+  'status.restartRequired': '需重启客户端',
+
+  'cli.title': 'dsh',
+  'cli.activeMissing': '未找到',
+  'cli.install': '安装',
+  'cli.macConflict': '将替换 /usr/local/bin/dsh',
+
+  'error.generic': '更新失败',
+  'error.invalidName': '名称无效',
+  'error.invalidValue': '值无效',
+  'error.restoreFailed': '恢复失败',
+  'error.cliInstall': '安装失败',
+  'error.cliUnresolved': '无法安装',
+  'error.cliUnsupported': '仅 Windows / macOS',
+} satisfies Record<string, string>
+
+/** The settings.env namespace key union. */
+export type EnvSettingsKey = keyof typeof zh
+
+/** English dictionary, checked complete against the zh key set. */
+export const en = {
+  'panel.nav': 'Environment',
+  'panel.title': 'Environment',
+  'panel.empty': 'No variables',
+  'panel.loading': 'Loading…',
+
+  'field.name': 'Name',
+  'field.value': 'Value',
+  'field.actions': 'Actions',
+  'field.namePlaceholder': 'MY_VAR',
+  'field.valuePlaceholder': 'value',
+
+  'action.confirm': 'Confirm',
+  'action.cancel': 'Cancel',
+  'action.remove': 'Delete',
+  'action.removeConfirmTitle': 'Delete variable',
+  'action.removeConfirm': 'Delete {name}?',
+  'action.restore': 'Restore original',
+  'action.close': 'Close',
+
+  'status.restartRequired': 'Restart the client',
+
+  'cli.title': 'dsh',
+  'cli.activeMissing': 'Not found',
+  'cli.install': 'Install',
+  'cli.macConflict': 'Replaces /usr/local/bin/dsh',
+
+  'error.generic': 'Update failed',
+  'error.invalidName': 'Invalid name',
+  'error.invalidValue': 'Invalid value',
+  'error.restoreFailed': 'Restore failed',
+  'error.cliInstall': 'Install failed',
+  'error.cliUnresolved': 'Install unavailable',
+  'error.cliUnsupported': 'Windows / macOS only',
+} satisfies Record<EnvSettingsKey, string>

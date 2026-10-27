@@ -1,9 +1,67 @@
-/** Locale dictionaries for the environment-variables settings section. */
+/** `settings.env` namespace dictionaries for the environment settings section. */
 /** Dictionary namespace owned by this plugin. */
-export declare const NS = "settings.env";
-/** Keys in the environment settings dictionaries. */
-export type EnvSettingsKey = 'nav' | 'title' | 'empty' | 'name' | 'value' | 'actions' | 'confirm' | 'cancel' | 'remove' | 'removeConfirmTitle' | 'removeConfirm' | 'restore' | 'close' | 'namePlaceholder' | 'valuePlaceholder' | 'loading' | 'error' | 'invalidName' | 'restartRequired' | 'cliTitle' | 'cliActiveMissing' | 'cliInstall' | 'cliMacConflict' | 'cliInstallError' | 'cliReasonUnresolved' | 'cliReasonUnsupported';
-/** English copy. */
-export declare const en: Record<EnvSettingsKey, string>;
-/** Chinese copy. */
-export declare const zh: Record<EnvSettingsKey, string>;
+export declare const NS: "settings.env";
+/** Simplified Chinese dictionary (the key-set source of truth). */
+export declare const zh: {
+    'panel.nav': string;
+    'panel.title': string;
+    'panel.empty': string;
+    'panel.loading': string;
+    'field.name': string;
+    'field.value': string;
+    'field.actions': string;
+    'field.namePlaceholder': string;
+    'field.valuePlaceholder': string;
+    'action.confirm': string;
+    'action.cancel': string;
+    'action.remove': string;
+    'action.removeConfirmTitle': string;
+    'action.removeConfirm': string;
+    'action.restore': string;
+    'action.close': string;
+    'status.restartRequired': string;
+    'cli.title': string;
+    'cli.activeMissing': string;
+    'cli.install': string;
+    'cli.macConflict': string;
+    'error.generic': string;
+    'error.invalidName': string;
+    'error.invalidValue': string;
+    'error.restoreFailed': string;
+    'error.cliInstall': string;
+    'error.cliUnresolved': string;
+    'error.cliUnsupported': string;
+};
+/** The settings.env namespace key union. */
+export type EnvSettingsKey = keyof typeof zh;
+/** English dictionary, checked complete against the zh key set. */
+export declare const en: {
+    'panel.nav': string;
+    'panel.title': string;
+    'panel.empty': string;
+    'panel.loading': string;
+    'field.name': string;
+    'field.value': string;
+    'field.actions': string;
+    'field.namePlaceholder': string;
+    'field.valuePlaceholder': string;
+    'action.confirm': string;
+    'action.cancel': string;
+    'action.remove': string;
+    'action.removeConfirmTitle': string;
+    'action.removeConfirm': string;
+    'action.restore': string;
+    'action.close': string;
+    'status.restartRequired': string;
+    'cli.title': string;
+    'cli.activeMissing': string;
+    'cli.install': string;
+    'cli.macConflict': string;
+    'error.generic': string;
+    'error.invalidName': string;
+    'error.invalidValue': string;
+    'error.restoreFailed': string;
+    'error.cliInstall': string;
+    'error.cliUnresolved': string;
+    'error.cliUnsupported': string;
+};

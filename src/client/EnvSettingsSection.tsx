@@ -16,6 +16,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { CliStatus, EnvEntry, EnvSnapshot } from '../types.ts'
+import { formatRemoteError } from './format-remote-error.ts'
 import type { EnvSettingsKey } from './locales.ts'
 import css from './EnvSettingsSection.module.css'
 
@@ -89,15 +90,15 @@ function RowActions({
   onRemove: () => void
 }): ReactNode {
   return (
-    <div className={css.actions} role="group" aria-label={t('actions')}>
+    <div className={css.actions} role="group" aria-label={t('field.actions')}>
       <Slot empty={!dirty && !pending}>
         {dirty ? (
-          <IconAction label={loading ? t('loading') : t('confirm')} primary disabled={busy || !canConfirm} onClick={onConfirm}>
+          <IconAction label={loading ? t('panel.loading') : t('action.confirm')} primary disabled={busy || !canConfirm} onClick={onConfirm}>
             {loading ? <IconLoadingOutlineRegular className={css.spinner} size={14} /> : <IconCheckOutlineRegular size={14} />}
           </IconAction>
         ) : (
-          <Tooltip portal label={t('restartRequired')} side="top" delayMs={400}>
-            <span className={css.restartBadge} role="img" aria-label={t('restartRequired')} title={t('restartRequired')}>
+          <Tooltip portal label={t('status.restartRequired')} side="top" delayMs={400}>
+            <span className={css.restartBadge} role="img" aria-label={t('status.restartRequired')} title={t('status.restartRequired')}>
               <IconWarningOutlineRegular size={14} />
             </span>
           </Tooltip>
@@ -105,17 +106,17 @@ function RowActions({
       </Slot>
       <Slot empty={!dirty && !pending}>
         {dirty ? (
-          <IconAction label={t('cancel')} disabled={busy} onClick={onCancel}>
+          <IconAction label={t('action.cancel')} disabled={busy} onClick={onCancel}>
             <IconCloseOutlineRegular size={14} />
           </IconAction>
         ) : (
-          <IconAction label={t('restore')} disabled={busy} onClick={onRestore}>
+          <IconAction label={t('action.restore')} disabled={busy} onClick={onRestore}>
             <IconRefreshOutlineRegular size={14} />
           </IconAction>
         )}
       </Slot>
       <Slot empty={!showRemove}>
-        <IconAction label={t('remove')} danger disabled={busy} onClick={onRemove}>
+        <IconAction label={t('action.remove')} danger disabled={busy} onClick={onRemove}>
           <IconTrashOutlineRegular size={14} />
         </IconAction>
       </Slot>
@@ -190,8 +191,8 @@ export function EnvSettingsSection({
     setError(undefined)
     try {
       applySnapshot(await action())
-    } catch {
-      setError(t('error'))
+    } catch (err) {
+      setError(formatRemoteError(err, t))
     } finally {
       setBusyTarget(undefined)
     }
@@ -203,8 +204,8 @@ export function EnvSettingsSection({
     try {
       applySnapshot(await load())
       try { setCli(await cliStatus()) } catch { setCli(undefined) }
-    } catch {
-      setError(t('error'))
+    } catch (err) {
+      setError(formatRemoteError(err, t))
     } finally {
       setBusyTarget(undefined)
     }
@@ -232,28 +233,28 @@ export function EnvSettingsSection({
   const cliBooting = busyTarget === 'boot' || cli === undefined
   const showCliAction = cli?.canInstall === true || cliInstalling
   const notice = error
-    ?? (nameError ? t('invalidName') : undefined)
-    ?? (cli?.reason === 'could-not-resolve-expected-cli' ? t('cliReasonUnresolved') : undefined)
-    ?? (cli?.reason === 'unsupported-platform' ? t('cliReasonUnsupported') : undefined)
+    ?? (nameError ? t('error.invalidName') : undefined)
+    ?? (cli?.reason === 'could-not-resolve-expected-cli' ? t('error.cliUnresolved') : undefined)
+    ?? (cli?.reason === 'unsupported-platform' ? t('error.cliUnsupported') : undefined)
 
   return (
     <div className={css.section}>
-      <h2 className={css.heading}>{t('title')}</h2>
+      <h2 className={css.heading}>{t('panel.title')}</h2>
 
-      <section className={css.cli} aria-label={t('cliTitle')}>
-        <h3 className={css.cliHeading}>{t('cliTitle')}</h3>
+      <section className={css.cli} aria-label={t('cli.title')}>
+        <h3 className={css.cliHeading}>{t('cli.title')}</h3>
         <div className={css.cliBody}>
           <p
             className={css.cliPath}
             title={cliBooting ? undefined : (cli.activePath ?? undefined)}
             aria-busy={cliBooting || cliInstalling}
           >
-            {cliBooting ? t('loading') : cli.activePath === null ? t('cliActiveMissing') : cli.activePath}
+            {cliBooting ? t('panel.loading') : cli.activePath === null ? t('cli.activeMissing') : cli.activePath}
           </p>
           <div className={css.cliSlot} data-empty={showCliAction ? 'false' : 'true'}>
             {showCliAction ? (
               <IconAction
-                label={cliInstalling ? t('loading') : cli?.platform === 'darwin' ? t('cliMacConflict') : t('cliInstall')}
+                label={cliInstalling ? t('panel.loading') : cli?.platform === 'darwin' ? t('cli.macConflict') : t('cli.install')}
                 disabled={busy}
                 onClick={() => {
                   if (busyTarget !== undefined) return
@@ -261,7 +262,7 @@ export function EnvSettingsSection({
                   setError(undefined)
                   void (async () => {
                     try { setCli(await cliInstall()) }
-                    catch { setError(t('cliInstallError')) }
+                    catch (err) { setError(formatRemoteError(err, t)) }
                     finally { setBusyTarget(undefined) }
                   })()
                 }}
@@ -281,13 +282,13 @@ export function EnvSettingsSection({
 
       <div className={css.list}>
         <div className={css.header}>
-          <p className={css.headerLabel}>{t('name')}</p>
-          <p className={css.headerLabel}>{t('value')}</p>
+          <p className={css.headerLabel}>{t('field.name')}</p>
+          <p className={css.headerLabel}>{t('field.value')}</p>
           <div className={css.headerActions} aria-hidden="true" />
         </div>
 
         {snapshot !== undefined && entries.length === 0 && notice === undefined
-          ? <p className={css.empty}>{t('empty')}</p>
+          ? <p className={css.empty}>{t('panel.empty')}</p>
           : null}
 
         {entries.map((entry: EnvEntry) => {
@@ -305,7 +306,7 @@ export function EnvSettingsSection({
                 disabled={busy}
                 title={draft.name}
                 invalid={nameError && dirty}
-                label={t('name')}
+                label={t('field.name')}
                 onChange={(name) => { setNameError(false); setDraft(entry.id, { name }) }}
               />
               <Field
@@ -313,7 +314,7 @@ export function EnvSettingsSection({
                 value={draft.value}
                 disabled={busy}
                 title={draft.value}
-                label={t('value')}
+                label={t('field.value')}
                 onChange={(value) => { setDraft(entry.id, { value }) }}
               />
               <RowActions
@@ -337,19 +338,19 @@ export function EnvSettingsSection({
             id="env-new-name"
             value={newDraft.name}
             disabled={busy}
-            placeholder={t('namePlaceholder')}
-            title={newDraft.name || t('namePlaceholder')}
+            placeholder={t('field.namePlaceholder')}
+            title={newDraft.name || t('field.namePlaceholder')}
             invalid={nameError}
-            label={t('name')}
+            label={t('field.name')}
             onChange={(name) => { setNameError(false); setDraft(NEW_ID, { name }) }}
           />
           <Field
             id="env-new-value"
             value={newDraft.value}
             disabled={busy}
-            placeholder={t('valuePlaceholder')}
-            title={newDraft.value || t('valuePlaceholder')}
-            label={t('value')}
+            placeholder={t('field.valuePlaceholder')}
+            title={newDraft.value || t('field.valuePlaceholder')}
+            label={t('field.value')}
             onChange={(value) => { setDraft(NEW_ID, { value }) }}
           />
           <RowActions
@@ -370,12 +371,12 @@ export function EnvSettingsSection({
       <Modal
         open={pendingRemove !== undefined}
         onClose={() => { if (!busy) setPendingRemove(undefined) }}
-        title={t('removeConfirmTitle')}
-        closeLabel={t('close')}
-        description={pendingRemove ? t('removeConfirm', { name: pendingRemove.name }) : undefined}
+        title={t('action.removeConfirmTitle')}
+        closeLabel={t('action.close')}
+        description={pendingRemove ? t('action.removeConfirm', { name: pendingRemove.name }) : undefined}
         footer={(
           <>
-            <Button variant="outline" disabled={busy} onClick={() => { setPendingRemove(undefined) }}>{t('cancel')}</Button>
+            <Button variant="outline" disabled={busy} onClick={() => { setPendingRemove(undefined) }}>{t('action.cancel')}</Button>
             <Button
               variant="primary"
               disabled={busy}
@@ -386,7 +387,7 @@ export function EnvSettingsSection({
                 void run(`row:${id}`, () => remove(id))
               }}
             >
-              {t('remove')}
+              {t('action.remove')}
             </Button>
           </>
         )}
