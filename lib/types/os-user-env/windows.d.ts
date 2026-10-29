@@ -5,6 +5,7 @@
 /** Win32 registry and broadcast calls used to publish user environment values. */
 export interface WindowsUserEnvBindings {
     readonly openKey: (hKey: number, subKey: string, options: number, samDesired: number, result: [unknown]) => number;
+    readonly queryValue: (hKey: unknown, valueName: string, reserved: unknown, type: [number] | null, data: Buffer | null, cbData: [number]) => number;
     readonly setValue: (hKey: unknown, valueName: string, reserved: number, type: number, data: Buffer, cbData: number) => number;
     readonly deleteValue: (hKey: unknown, valueName: string) => number;
     readonly closeKey: (hKey: unknown) => number;
@@ -22,19 +23,26 @@ export declare function setWindowsUserEnvBindingsForTests(next: WindowsUserEnvBi
  */
 export declare function encodeRegSz(value: string): Buffer;
 /**
+ * Whether `name` exists under HKCU\\Environment (value may be empty).
+ * @param name - Variable name.
+ * @param platform - Override for tests; defaults to `process.platform`.
+ * @returns true when the value name is present.
+ */
+export declare function hasWindowsUserEnv(name: string, platform?: NodeJS.Platform): boolean;
+/**
  * Write entries into HKCU\\Environment and broadcast WM_SETTINGCHANGE.
  * No-op on non-Windows hosts or when `entries` is empty.
  * @param entries - Variable map to persist.
  * @param platform - Override for tests; defaults to `process.platform`.
  */
-export declare function persistWindowsUserEnv(entries: Readonly<Record<string, string>>, platform?: NodeJS.Platform): void;
+export declare function writeWindowsUserEnv(entries: Readonly<Record<string, string>>, platform?: NodeJS.Platform): void;
 /**
  * Delete many user environment values from HKCU\\Environment in one open/broadcast.
  * Missing values are ignored.
  * @param names - Variable names to remove.
  * @param platform - Override for tests; defaults to `process.platform`.
  */
-export declare function removeWindowsUserEnvMany(names: readonly string[], platform?: NodeJS.Platform): void;
+export declare function removeWindowsUserEnvs(names: readonly string[], platform?: NodeJS.Platform): void;
 /**
  * Delete one user environment value from HKCU\\Environment.
  * Missing values are ignored.

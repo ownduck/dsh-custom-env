@@ -1,25 +1,34 @@
 /** OS user-environment sync for Windows and macOS (no-op elsewhere). */
 
-import { persistMacosUserEnv, removeMacosUserEnv, removeMacosUserEnvMany } from './macos.ts'
-import { persistWindowsUserEnv, removeWindowsUserEnv, removeWindowsUserEnvMany } from './windows.ts'
+import { hasMacosUserEnv, removeMacosUserEnv, removeMacosUserEnvs, writeMacosUserEnv } from './macos.ts'
+import { hasWindowsUserEnv, removeWindowsUserEnv, removeWindowsUserEnvs, writeWindowsUserEnv } from './windows.ts'
 
 /**
- * Persist entries into the current user's OS environment when supported.
+ * Whether `name` already exists in the OS user environment (Windows HKCU or macOS user domain).
+ * @param name - Variable name.
+ * @returns true when present (value may be empty); false on unsupported platforms.
+ */
+export function hasUserEnv(name: string): boolean {
+  return hasWindowsUserEnv(name) || hasMacosUserEnv(name)
+}
+
+/**
+ * Write entries into the current user's OS environment when supported.
  * @param entries - Variable map to write.
  */
-export function persistUserEnv(entries: Readonly<Record<string, string>>): void {
-  persistWindowsUserEnv(entries)
-  persistMacosUserEnv(entries)
+export function writeUserEnv(entries: Readonly<Record<string, string>>): void {
+  writeWindowsUserEnv(entries)
+  writeMacosUserEnv(entries)
 }
 
 /**
  * Remove many keys from the current user's OS environment when supported.
  * @param names - Variable names to delete.
  */
-export function removeUserEnvMany(names: readonly string[]): void {
+export function removeUserEnvs(names: readonly string[]): void {
   if (names.length === 0) return
-  removeWindowsUserEnvMany(names)
-  removeMacosUserEnvMany(names)
+  removeWindowsUserEnvs(names)
+  removeMacosUserEnvs(names)
 }
 
 /**
@@ -27,16 +36,18 @@ export function removeUserEnvMany(names: readonly string[]): void {
  * @param name - Variable name to delete.
  */
 export function removeUserEnv(name: string): void {
-  removeUserEnvMany([name])
+  removeUserEnvs([name])
 }
 
 export {
-  persistWindowsUserEnv,
+  hasWindowsUserEnv,
   removeWindowsUserEnv,
-  removeWindowsUserEnvMany,
+  removeWindowsUserEnvs,
+  writeWindowsUserEnv,
 } from './windows.ts'
 export {
-  persistMacosUserEnv,
+  hasMacosUserEnv,
   removeMacosUserEnv,
-  removeMacosUserEnvMany,
+  removeMacosUserEnvs,
+  writeMacosUserEnv,
 } from './macos.ts'

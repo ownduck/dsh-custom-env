@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, it } from 'node:test'
 import { isWritableEnvName } from '../src/names.ts'
-import { listEnvEntries, loadEnvMap, removeEnvEntry, renameEnvEntry, upsertEnvEntry } from '../src/env-file.ts'
+import { listEnvEntries, readEnvMap, removeEnvEntry, renameEnvEntry, writeEnvEntry } from '../src/env-file.ts'
 
 describe('isWritableEnvName', () => {
   it('accepts ordinary names', () => {
@@ -34,21 +34,21 @@ describe('env-file CRUD', () => {
     home = mkdtempSync(join(tmpdir(), 'dsh-custom-env-'))
     process.env.DSH_HOME = home
 
-    upsertEnvEntry('ALPHA', 'one')
-    assert.deepEqual(loadEnvMap(), { ALPHA: 'one' })
+    writeEnvEntry('ALPHA', 'one')
+    assert.deepEqual(readEnvMap(), { ALPHA: 'one' })
     assert.match(readFileSync(join(home, '.env'), 'utf8'), /ALPHA=one/)
 
-    upsertEnvEntry('ALPHA', 'two')
-    upsertEnvEntry('BETA', 'bee')
+    writeEnvEntry('ALPHA', 'two')
+    writeEnvEntry('BETA', 'bee')
     assert.deepEqual(listEnvEntries().entries, [
       { name: 'ALPHA', value: 'two' },
       { name: 'BETA', value: 'bee' },
     ])
 
     assert.equal(removeEnvEntry('ALPHA'), true)
-    assert.deepEqual(loadEnvMap(), { BETA: 'bee' })
+    assert.deepEqual(readEnvMap(), { BETA: 'bee' })
     assert.equal(readFileSync(join(home, '.env'), 'utf8'), 'BETA=bee\n')
-    assert.throws(() => upsertEnvEntry('DSH_HOME', 'nope'), /refused/)
+    assert.throws(() => writeEnvEntry('DSH_HOME', 'nope'), /refused/)
   })
 
   it('strips blank gaps left by delete when rewriting', () => {
@@ -65,12 +65,12 @@ describe('env-file CRUD', () => {
     previousHome = process.env.DSH_HOME
     home = mkdtempSync(join(tmpdir(), 'dsh-custom-env-rename-'))
     process.env.DSH_HOME = home
-    upsertEnvEntry('FIRST', '1')
-    upsertEnvEntry('MIDDLE', '2')
-    upsertEnvEntry('LAST', '3')
+    writeEnvEntry('FIRST', '1')
+    writeEnvEntry('MIDDLE', '2')
+    writeEnvEntry('LAST', '3')
 
     renameEnvEntry('MIDDLE', 'MIDDLE_NEW', '22')
-    upsertEnvEntry('NEW', '4')
+    writeEnvEntry('NEW', '4')
     assert.deepEqual(listEnvEntries().entries, [
       { name: 'FIRST', value: '1' },
       { name: 'MIDDLE_NEW', value: '22' },
@@ -88,15 +88,19 @@ describe('env-file CRUD', () => {
     home = mkdtempSync(join(tmpdir(), 'dsh-custom-env-empty-'))
     process.env.DSH_HOME = home
 
-    upsertEnvEntry('EMPTY', '')
+    writeEnvEntry('EMPTY', '')
     assert.equal(readFileSync(join(home, '.env'), 'utf8'), 'EMPTY=\n')
-    assert.deepEqual(loadEnvMap(), { EMPTY: '' })
+    assert.deepEqual(readEnvMap(), { EMPTY: '' })
     assert.deepEqual(listEnvEntries().entries, [{ name: 'EMPTY', value: '' }])
 
-    upsertEnvEntry('EMPTY', 'filled')
-    assert.deepEqual(loadEnvMap(), { EMPTY: 'filled' })
+    writeEnvEntry('EMPTY', 'filled')
+    assert.deepEqual(readEnvMap(), { EMPTY: 'filled' })
+
+    writeEnvEntry('EMPTY', '')
+    assert.deepEqual(readEnvMap(), { EMPTY: 'filled' })
 
     assert.equal(removeEnvEntry('EMPTY'), true)
-    assert.deepEqual(loadEnvMap(), {})
+    assert.deepEqual(readEnvMap(), {})
   })
 })
+

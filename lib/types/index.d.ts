@@ -39,7 +39,10 @@ export default class CustomEnvController extends TypertRemoteService {
     private bind;
     private unbind;
     private requireName;
-    /** Persist `name=value` replacing `from` in place; sync process.env / OS. Empty values allowed. */
+    /**
+     * Write `name=value` replacing `from` in place; sync process.env / OS.
+     * Empty values create missing keys only, unless `forceEmpty` (restore).
+     */
     private commit;
     /** @returns path, existence, and file-ordered entries. */
     list(): Promise<EnvSnapshot>;
@@ -47,19 +50,21 @@ export default class CustomEnvController extends TypertRemoteService {
      * Create or update one row. Empty `id` creates; otherwise keeps that baseline id across renames.
      * @param id - row id, or `""` for a new row.
      * @param name - variable name.
-     * @param value - value (empty string allowed; Settings UI may still reject empty drafts).
+     * @param value - value (empty creates only when missing; Settings UI may still reject empty drafts).
      */
     upsert(id: string, name: string, value: string): Promise<EnvSnapshot>;
     /**
-     * Create or replace many variables by name (plugin-facing; empty values allowed).
-     * One file rewrite; last duplicate name wins. Invalid names reject the whole batch.
+     * Create or replace many variables by name (plugin-facing).
+     * Non-empty values always write; empty values create missing keys only and do not
+     * clear existing `$DSH_HOME/.env` or OS user values. One file rewrite; last
+     * duplicate name wins. Invalid names reject the whole batch.
      * @param entries - name/value pairs.
      */
     setVars(entries: readonly EnvVarWrite[]): Promise<void>;
     /**
-     * Create or replace one variable by name (plugin-facing; empty value allowed).
+     * Create or replace one variable by name (plugin-facing).
      * @param name - writable variable name.
-     * @param value - value to store (`""` writes `NAME=` and sets `process.env[name]` to `""`).
+     * @param value - non-empty always stores; `""` writes `NAME=` only when the key is absent.
      */
     setVar(name: string, value: string): Promise<void>;
     /**

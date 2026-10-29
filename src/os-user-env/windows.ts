@@ -9,6 +9,7 @@ type Koffi = typeof import('koffi')['default']
 
 /** Predefined HKCU handle (same numeric value on Win32 and Win64). */
 const HKEY_CURRENT_USER = 0x80000001
+const KEY_QUERY_VALUE = 0x0001
 const KEY_SET_VALUE = 0x0002
 const REG_SZ = 1
 const ERROR_SUCCESS = 0
@@ -25,6 +26,14 @@ export interface WindowsUserEnvBindings {
     options: number,
     samDesired: number,
     result: [unknown],
+  ) => number
+  readonly queryValue: (
+    hKey: unknown,
+    valueName: string,
+    reserved: unknown,
+    type: [number] | null,
+    data: Buffer | null,
+    cbData: [number],
   ) => number
   readonly setValue: (
     hKey: unknown,
@@ -59,6 +68,9 @@ function loadBindings(): WindowsUserEnvBindings {
     openKey: advapi32.func(
       'long __stdcall RegOpenKeyExW(uintptr_t hKey, const char16_t *subKey, uint32_t options, uint32_t samDesired, _Out_ void **result)',
     ) as WindowsUserEnvBindings['openKey'],
+    queryValue: advapi32.func(
+      'long __stdcall RegQueryValueExW(void *hKey, const char16_t *valueName, void *reserved, _Inout_ uint32_t *type, uint8_t *data, _Inout_ uint32_t *cbData)',
+    ) as WindowsUserEnvBindings['queryValue'],
     setValue: advapi32.func(
       'long __stdcall RegSetValueExW(void *hKey, const char16_t *valueName, uint32_t reserved, uint32_t type, const uint8_t *data, uint32_t cbData)',
     ) as WindowsUserEnvBindings['setValue'],
@@ -104,12 +116,43 @@ function broadcastEnvironmentChange(api: WindowsUserEnvBindings): void {
 }
 
 /**
+ * Whether `name` exists under HKCU\\Environment (value may be empty).
+ * @param name - Variable name.
+ * @param platform - Override for tests; defaults to `process.platform`.
+ * @returns true when the value name is present.
+ */
+export function hasWindowsUserEnv(
+  name: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  if (platform !== 'win32') return false
+  const api = loadBindings()
+  const keySlot: [unknown] = [null]
+  const openStatus = api.openKey(HKEY_CURRENT_USER, 'Environment', 0, KEY_QUERY_VALUE, keySlot)
+  if (openStatus !== ERROR_SUCCESS) {
+    throw new Error(`custom-env: RegOpenKeyExW failed (Win32 ${openStatus})`)
+  }
+  const hKey = keySlot[0]
+  try {
+    const cbData: [number] = [0]
+    const status = api.queryValue(hKey, name, null, null, null, cbData)
+    if (status === ERROR_FILE_NOT_FOUND) return false
+    if (status !== ERROR_SUCCESS && status !== 234 /* ERROR_MORE_DATA */) {
+      throw new Error(`custom-env: RegQueryValueExW(${name}) failed (Win32 ${status})`)
+    }
+    return true
+  } finally {
+    api.closeKey(hKey)
+  }
+}
+
+/**
  * Write entries into HKCU\\Environment and broadcast WM_SETTINGCHANGE.
  * No-op on non-Windows hosts or when `entries` is empty.
  * @param entries - Variable map to persist.
  * @param platform - Override for tests; defaults to `process.platform`.
  */
-export function persistWindowsUserEnv(
+export function writeWindowsUserEnv(
   entries: Readonly<Record<string, string>>,
   platform: NodeJS.Platform = process.platform,
 ): void {
@@ -145,7 +188,7 @@ export function persistWindowsUserEnv(
  * @param names - Variable names to remove.
  * @param platform - Override for tests; defaults to `process.platform`.
  */
-export function removeWindowsUserEnvMany(
+export function removeWindowsUserEnvs(
   names: readonly string[],
   platform: NodeJS.Platform = process.platform,
 ): void {
@@ -182,5 +225,6 @@ export function removeWindowsUserEnv(
   name: string,
   platform: NodeJS.Platform = process.platform,
 ): void {
-  removeWindowsUserEnvMany([name], platform)
+  removeWindowsUserEnvs([name], platform)
 }
+

@@ -88,11 +88,27 @@ function writeAgent(entries: Readonly<Record<string, string>>): void {
 }
 
 /**
+ * Whether `name` is present in this process's macOS user-env tracking
+ * (`process.env` or the in-memory LaunchAgent cache).
+ * @param name - Variable name.
+ * @param platform - Override for tests; defaults to `process.platform`.
+ * @returns true when the name is already managed/visible.
+ */
+export function hasMacosUserEnv(
+  name: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  if (platform !== 'darwin') return false
+  if (Object.hasOwn(process.env, name)) return true
+  return Object.hasOwn(ensureCache(), name)
+}
+
+/**
  * Set user-domain environment variables for new GUI sessions and refresh the Login Agent.
  * @param entries - Variable map to persist.
  * @param platform - Override for tests; defaults to `process.platform`.
  */
-export function persistMacosUserEnv(
+export function writeMacosUserEnv(
   entries: Readonly<Record<string, string>>,
   platform: NodeJS.Platform = process.platform,
 ): void {
@@ -112,7 +128,7 @@ export function persistMacosUserEnv(
  * @param names - Variable names to remove.
  * @param platform - Override for tests; defaults to `process.platform`.
  */
-export function removeMacosUserEnvMany(
+export function removeMacosUserEnvs(
   names: readonly string[],
   platform: NodeJS.Platform = process.platform,
 ): void {
@@ -134,5 +150,6 @@ export function removeMacosUserEnv(
   name: string,
   platform: NodeJS.Platform = process.platform,
 ): void {
-  removeMacosUserEnvMany([name], platform)
+  removeMacosUserEnvs([name], platform)
 }
+
