@@ -2,15 +2,15 @@
 
 English | [中文](README.zh-CN.md)
 
-Community DeepSeek Harness plugin: manage `$DSH_HOME/.env` from **Settings → Environment**. Not an official DeepSeek AI product.
+Community DeepSeek Harness plugin for managing environment variables in **Settings → Environment**. Not an official DeepSeek AI product.
 
-Writes update `.env`, hot-apply `process.env`, and sync the Windows / macOS user environment. Linux user-env sync is not supported.
+Changes apply to the running app right away, and on Windows / macOS also to the user environment so new terminals can see them. Linux user-environment sync is not supported.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ## Install
 
-Needs DSH with the `dsh` CLI (`desktop` or `web` profile).
+Requires DSH with the `dsh` CLI (`desktop` or `web`).
 
 ```powershell
 dsh plugin --profile desktop add @woosau/dsh-custom-env
@@ -18,65 +18,66 @@ dsh plugin --profile desktop add @woosau/dsh-custom-env
 # or: dsh plugin --profile desktop add github:ownduck/dsh-custom-env
 ```
 
-Close Desktop first on `EPERM` for the profile `package.json`. GitHub installs may need `allowBuilds.koffi: true` in the profile `pnpm-workspace.yaml`. Restart DSH, then open **Settings → Environment**.
+If install fails because Desktop is locking files, quit Desktop first. After install, restart DSH and open **Settings → Environment**.
 
 ```powershell
 dsh plugin --profile desktop remove @woosau/dsh-custom-env
 ```
 
-## Settings UI
+## For users
 
-1. Edit drafts → **Confirm** writes `.env` + Host/OS; **Cancel** reverts inputs
-2. **Restore** rewrites the Host-start value for that row
-3. Restart DSH or open a new terminal for full OS effect
-4. Optional **Install** for this Host’s `dsh` CLI (Windows user PATH / macOS `/usr/local/bin/dsh`)
+1. Open **Settings → Environment**
+2. Edit a row as a draft → **Confirm** to save, **Cancel** to discard
+3. **Restore** brings back the value from when this app session started
+4. Restart the app or open a new terminal if other tools should pick up OS-level changes
+5. Use **Install** only when shown, to wire this Host’s `dsh` command into your user PATH (Windows / macOS)
 
-Bootstrap names (`PATH`, `DSH_*`, `XDG_*`, …) are refused.
+System-reserved names (such as `PATH` and names starting with `DSH_` / `XDG_`) cannot be edited here.
 
-## Write rules
+### When saving a value
 
-| Incoming | Key missing | Key already present (`.env` or OS user env) |
-|----------|-------------|-----------------------------------------------|
-| Non-empty | create | overwrite |
-| Empty | create `NAME=` | **skip** (keep existing, even if empty) |
+| You save | Variable does not exist yet | Variable already exists |
+|----------|-----------------------------|-------------------------|
+| A non-empty value | Created | Replaced |
+| An empty value | Created as empty | Left unchanged |
 
-## Remote API
+## For other plugins (Remote API)
 
-Host plugins use the `customEnv` service (`ctx.get('customEnv')` or injected `ctx.customEnv`). Settings uses id-based remotes; other plugins usually use name-based `setVar` / `removeVar`.
+Call the Host `customEnv` service (`ctx.get('customEnv')` or injected `ctx.customEnv`).
 
-### By variable name
+**Everyday use — by variable name**
 
 ```ts
 const env = ctx.get('customEnv')
 
-await env?.setVar('MY_KEY', 'value')   // create / overwrite
-await env?.setVar('MY_KEY', '')        // create only if missing
-await env?.removeVar('MY_KEY')         // → boolean (.env line removed?)
+await env?.setVar('MY_KEY', 'value')  // create or replace
+await env?.setVar('MY_KEY', '')       // create only if missing
+await env?.removeVar('MY_KEY')
 
 await env?.setVars([
   { name: 'A', value: '1' },
-  { name: 'B', value: '' },            // skipped if B already exists
+  { name: 'B', value: '' },           // no-op if B already exists
 ])
-await env?.removeVars(['A', 'B'])      // → number of .env lines removed
+await env?.removeVars(['A', 'B'])
 ```
 
-Invalid / bootstrap names reject the whole batch.
+Reserved names are rejected (batch calls fail entirely).
 
-### By Settings row id
+**Settings UI — by row id**
 
-| Remote | Role |
-|--------|------|
-| `list()` | `{ path, exists, entries[] }` — file order; each entry has `id`, `name`, `value`, `kind`, `previous` |
-| `upsert(id, name, value)` | `id === ''` creates; else update/rename that row → snapshot |
-| `deleteEntry(id)` | remove by id → snapshot |
-| `restore(id)` | Host-start name/value (forced write), or delete if added after start → snapshot |
+| Call | Purpose |
+|------|---------|
+| `list()` | Current variables and row ids |
+| `upsert(id, name, value)` | Create (`id` empty) or update/rename a row |
+| `deleteEntry(id)` | Delete that row |
+| `restore(id)` | Restore session-start value, or remove if the row was added later |
 
-### CLI helper
+**CLI helpers**
 
-| Remote | Role |
-|--------|------|
-| `cliStatus()` | whether this Host’s `dsh` CLI is installed / offered |
-| `cliInstall()` | install / repair the CLI link (Windows / macOS) |
+| Call | Purpose |
+|------|---------|
+| `cliStatus()` | Whether this Host’s `dsh` CLI is ready / can be installed |
+| `cliInstall()` | Install or repair that CLI entry |
 
 ## License
 
