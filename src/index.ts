@@ -5,12 +5,19 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { cliInstall as installCli, cliStatus as readCliStatus } from './cli-path/index.ts'
-import { envFilePath, listEnvEntries, loadEnvMap, removeEnvEntry, writeEnvEntry } from './env-file.ts'
+import { envFilePath, listEnvEntries, loadEnvMap, removeEnvEntries, writeEnvEntries, writeEnvEntry } from './env-file.ts'
 import { isWritableEnvName } from './names.ts'
-import { persistUserEnv, removeUserEnv } from './os-user-env/index.ts'
-import { classifyEntry, type BaselineRow, type CliStatus, type EnvEntry, type EnvSnapshot } from './types.ts'
+import { persistUserEnv, removeUserEnvMany } from './os-user-env/index.ts'
+import {
+  classifyEntry,
+  type BaselineRow,
+  type CliStatus,
+  type EnvEntry,
+  type EnvSnapshot,
+  type EnvVarWrite,
+} from './types.ts'
 
-export type { BaselineRow, CliStatus, EnvEntry, EnvSnapshot } from './types.ts'
+export type { BaselineRow, CliStatus, EnvEntry, EnvSnapshot, EnvVarWrite } from './types.ts'
 export { classifyEntry } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -41,13 +48,20 @@ function applyLive(entries: Readonly<Record<string, string>>): void {
   }
 }
 
-function clearLive(name: string): void {
-  delete process.env[name]
+function clearLiveMany(names: readonly string[]): void {
+  if (names.length === 0) return
+  for (const name of names) delete process.env[name]
   try {
-    removeUserEnv(name)
+    removeUserEnvMany(names)
   } catch (error) {
-    process.stderr.write(`custom-env: failed to remove OS user environment ${name}: ${asMessage(error)}\n`)
+    process.stderr.write(
+      `custom-env: failed to remove OS user environment (${names.join(', ')}): ${asMessage(error)}\n`,
+    )
   }
+}
+
+function clearLive(name: string): void {
+  clearLiveMany([name])
 }
 
 /** Host remote for `$DSH_HOME/.env` CRUD with live Host/OS sync. */
@@ -147,14 +161,76 @@ export default class CustomEnvController extends TypertRemoteService {
   }
 
   /**
+   * Create or replace many variables by name (plugin-facing; empty values allowed).
+   * One file rewrite; last duplicate name wins. Invalid names reject the whole batch.
+   * @param entries - name/value pairs.
+   */
+  @Remote('setVars')
+  async setVars(entries: readonly EnvVarWrite[]): Promise<void> {
+    if (entries.length === 0) return
+    const lastByName = new Map<string, string>()
+    for (const entry of entries) {
+      if (!isWritableEnvName(entry.name)) {
+        throw new RemoteError('custom-env/invalid-name', `refused name "${entry.name}"`, { name: entry.name })
+      }
+      lastByName.set(entry.name, entry.value)
+    }
+    const normalized: EnvVarWrite[] = [...lastByName].map(([name, value]) => ({ name, value }))
+    try {
+      writeEnvEntries(normalized)
+    } catch (error) {
+      const name = normalized[0]?.name ?? ''
+      throw new RemoteError('custom-env/invalid-name', asMessage(error), { name }, { cause: error })
+    }
+    const live: Record<string, string> = {}
+    for (const entry of normalized) {
+      live[entry.name] = entry.value
+      if (!this.idByName.has(entry.name)) this.bind(this.allocId(), entry.name)
+    }
+    applyLive(live)
+  }
+
+  /**
    * Create or replace one variable by name (plugin-facing; empty value allowed).
    * @param name - writable variable name.
    * @param value - value to store (`""` writes `NAME=` and sets `process.env[name]` to `""`).
    */
   @Remote('setVar')
   async setVar(name: string, value: string): Promise<void> {
-    this.commit(name, name, value)
-    if (!this.idByName.has(name)) this.bind(this.allocId(), name)
+    await this.setVars([{ name, value }])
+  }
+
+  /**
+   * Remove many variables by name (plugin-facing).
+   * @param names - writable variable names.
+   * @returns number of `.env` lines removed.
+   */
+  @Remote('removeVars')
+  async removeVars(names: readonly string[]): Promise<number> {
+    if (names.length === 0) return 0
+    const unique: string[] = []
+    const seen = new Set<string>()
+    for (const name of names) {
+      if (!isWritableEnvName(name)) {
+        throw new RemoteError('custom-env/invalid-name', `refused name "${name}"`, { name })
+      }
+      if (seen.has(name)) continue
+      seen.add(name)
+      unique.push(name)
+    }
+    let removed: number
+    try {
+      removed = removeEnvEntries(unique)
+    } catch (error) {
+      const name = unique[0] ?? ''
+      throw new RemoteError('custom-env/invalid-name', asMessage(error), { name }, { cause: error })
+    }
+    clearLiveMany(unique)
+    for (const name of unique) {
+      const id = this.idByName.get(name)
+      if (id !== undefined) this.unbind(id)
+    }
+    return removed
   }
 
   /**
@@ -164,35 +240,14 @@ export default class CustomEnvController extends TypertRemoteService {
    */
   @Remote('removeVar')
   async removeVar(name: string): Promise<boolean> {
-    if (!isWritableEnvName(name)) {
-      throw new RemoteError('custom-env/invalid-name', `refused name "${name}"`, { name })
-    }
-    let removed: boolean
-    try {
-      removed = removeEnvEntry(name)
-    } catch (error) {
-      throw new RemoteError('custom-env/invalid-name', asMessage(error), { name }, { cause: error })
-    }
-    clearLive(name)
-    const id = this.idByName.get(name)
-    if (id !== undefined) this.unbind(id)
-    return removed
+    return (await this.removeVars([name])) > 0
   }
 
   /** @param id - row id from list(). */
   @Remote('deleteEntry')
   async deleteEntry(id: string): Promise<EnvSnapshot> {
     const name = this.requireName(id, id)
-    if (!isWritableEnvName(name)) {
-      throw new RemoteError('custom-env/invalid-name', `refused name "${name}"`, { name })
-    }
-    try {
-      removeEnvEntry(name)
-    } catch (error) {
-      throw new RemoteError('custom-env/invalid-name', asMessage(error), { name }, { cause: error })
-    }
-    clearLive(name)
-    this.unbind(id)
+    await this.removeVars([name])
     return this.list()
   }
 

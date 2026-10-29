@@ -1,7 +1,7 @@
 {
   "name": "@woosau/dsh-custom-env",
   "description": "DSH plugin: manage $DSH_HOME/.env from Settings",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",

@@ -21,6 +21,15 @@ export declare function listEnvEntries(): {
     entries: RawEnvEntry[];
 };
 /**
+ * Create or replace many keys in one file rewrite (last duplicate name wins).
+ * Existing keys keep file order; new keys append in input order.
+ * @param entries - name/value pairs (empty values write `NAME=`).
+ */
+export declare function writeEnvEntries(entries: readonly {
+    readonly name: string;
+    readonly value: string;
+}[]): void;
+/**
  * Write `name=value` in place of `replaceName` (keeps order), or append when missing.
  * Use the same name for both to update; different names to rename in place.
  * @param replaceName - line to replace.
@@ -32,6 +41,12 @@ export declare function writeEnvEntry(replaceName: string, name: string, value: 
 export declare function upsertEnvEntry(name: string, value: string): void;
 /** Rename one key in place (keeps file order). */
 export declare function renameEnvEntry(from: string, to: string, value: string): void;
+/**
+ * Remove many keys from `$DSH_HOME/.env` in one rewrite.
+ * @param names - variable names (all must be writable).
+ * @returns number of assignment lines removed.
+ */
+export declare function removeEnvEntries(names: readonly string[]): number;
 /**
  * Remove one key from `$DSH_HOME/.env` when present.
  * @param name - variable name.

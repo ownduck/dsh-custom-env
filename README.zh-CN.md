@@ -57,9 +57,15 @@ const env = ctx.get('customEnv') // 或已注入时用 ctx.customEnv
 await env?.setVar('MY_KEY', 'value') // 新增或覆盖
 await env?.setVar('MY_KEY', '')      // 空值写入 MY_KEY=
 await env?.removeVar('MY_KEY')       // 返回是否删掉了 .env 行
+
+await env?.setVars([                 // 一次写文件；同名后者覆盖
+  { name: 'A', value: '1' },
+  { name: 'B', value: '' },
+])
+await env?.removeVars(['A', 'B'])    // 返回删掉的 .env 行数
 ```
 
-bootstrap / 保留名（`PATH`、`DSH_*`、`XDG_*` 等）会被拒绝。写入会更新 `$DSH_HOME/.env`、热写 `process.env`，并同步 Windows / macOS 用户环境。
+bootstrap / 保留名（`PATH`、`DSH_*`、`XDG_*` 等）会被拒绝（批量接口整批失败）。写入会更新 `$DSH_HOME/.env`、热写 `process.env`，并同步 Windows / macOS 用户环境。
 
 ## 许可证
 

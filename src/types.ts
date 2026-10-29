@@ -26,6 +26,12 @@ export interface EnvSnapshot {
   readonly entries: readonly EnvEntry[]
 }
 
+/** One name/value pair for plugin-facing `setVar` / `setVars`. */
+export interface EnvVarWrite {
+  readonly name: string
+  readonly value: string
+}
+
 /** Snapshot returned by `customEnv/cliStatus` and `cliInstall`. */
 export interface CliStatus {
   readonly platform: string

@@ -108,6 +108,24 @@ export function persistMacosUserEnv(
 }
 
 /**
+ * Unset many user-domain environment variables and refresh the Login Agent once.
+ * @param names - Variable names to remove.
+ * @param platform - Override for tests; defaults to `process.platform`.
+ */
+export function removeMacosUserEnvMany(
+  names: readonly string[],
+  platform: NodeJS.Platform = process.platform,
+): void {
+  if (platform !== 'darwin' || names.length === 0) return
+  const map = ensureCache()
+  for (const name of names) {
+    delete map[name]
+    try { launchctl(['unsetenv', name]) } catch (_error) { /* already unset */ }
+  }
+  writeAgent(map)
+}
+
+/**
  * Unset one user-domain environment variable and refresh the Login Agent.
  * @param name - Variable name to remove.
  * @param platform - Override for tests; defaults to `process.platform`.
@@ -116,9 +134,5 @@ export function removeMacosUserEnv(
   name: string,
   platform: NodeJS.Platform = process.platform,
 ): void {
-  if (platform !== 'darwin') return
-  const map = ensureCache()
-  delete map[name]
-  try { launchctl(['unsetenv', name]) } catch (_error) { /* already unset */ }
-  writeAgent(map)
+  removeMacosUserEnvMany([name], platform)
 }

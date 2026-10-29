@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, it } from 'node:test'
@@ -8,7 +8,7 @@ import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import CustomEnvController from '../src/index.ts'
 import { loadEnvMap } from '../src/env-file.ts'
 
-describe('setVar / removeVar', () => {
+describe('setVar / removeVar / setVars / removeVars', () => {
   let home: string | undefined
   let previousHome: string | undefined
   let controller: CustomEnvController | undefined
@@ -67,5 +67,65 @@ describe('setVar / removeVar', () => {
       () => env.removeVar('PATH'),
       (error: unknown) => error instanceof RemoteError && error.code === 'custom-env/invalid-name',
     )
+  })
+
+  it('setVars writes many keys once and last duplicate wins', async () => {
+    const env = start()
+    touched.add('A').add('B').add('C')
+
+    await env.setVars([
+      { name: 'A', value: '1' },
+      { name: 'B', value: '2' },
+      { name: 'A', value: '9' },
+      { name: 'C', value: '' },
+    ])
+    assert.equal(process.env.A, '9')
+    assert.equal(process.env.B, '2')
+    assert.equal(process.env.C, '')
+    assert.deepEqual(loadEnvMap(), { A: '9', B: '2', C: '' })
+    assert.equal(readFileSync(join(home!, '.env'), 'utf8'), 'A=9\nB=2\nC=\n')
+  })
+
+  it('setVars empty array is a no-op', async () => {
+    const env = start()
+    await env.setVars([])
+    assert.equal(existsSync(join(home!, '.env')), false)
+  })
+
+  it('removeVars deletes many and returns removed line count', async () => {
+    const env = start()
+    touched.add('X').add('Y').add('Z')
+    await env.setVars([
+      { name: 'X', value: '1' },
+      { name: 'Y', value: '2' },
+      { name: 'Z', value: '3' },
+    ])
+
+    assert.equal(await env.removeVars(['Y', 'MISSING', 'X', 'Y']), 2)
+    assert.equal(process.env.X, undefined)
+    assert.equal(process.env.Y, undefined)
+    assert.equal(process.env.Z, '3')
+    assert.deepEqual(loadEnvMap(), { Z: '3' })
+    assert.equal(await env.removeVars([]), 0)
+  })
+
+  it('rejects bootstrap names on setVars and removeVars without writing', async () => {
+    const env = start()
+    touched.add('OK')
+    await env.setVar('OK', '1')
+
+    await assert.rejects(
+      () => env.setVars([{ name: 'OK', value: '2' }, { name: 'PATH', value: 'x' }]),
+      (error: unknown) => error instanceof RemoteError && error.code === 'custom-env/invalid-name',
+    )
+    assert.equal(process.env.OK, '1')
+    assert.deepEqual(loadEnvMap(), { OK: '1' })
+
+    await assert.rejects(
+      () => env.removeVars(['OK', 'DSH_HOME']),
+      (error: unknown) => error instanceof RemoteError && error.code === 'custom-env/invalid-name',
+    )
+    assert.equal(process.env.OK, '1')
+    assert.deepEqual(loadEnvMap(), { OK: '1' })
   })
 })

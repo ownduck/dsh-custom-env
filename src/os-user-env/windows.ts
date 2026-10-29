@@ -140,16 +140,16 @@ export function persistWindowsUserEnv(
 }
 
 /**
- * Delete one user environment value from HKCU\\Environment.
+ * Delete many user environment values from HKCU\\Environment in one open/broadcast.
  * Missing values are ignored.
- * @param name - Variable name to remove.
+ * @param names - Variable names to remove.
  * @param platform - Override for tests; defaults to `process.platform`.
  */
-export function removeWindowsUserEnv(
-  name: string,
+export function removeWindowsUserEnvMany(
+  names: readonly string[],
   platform: NodeJS.Platform = process.platform,
 ): void {
-  if (platform !== 'win32') return
+  if (platform !== 'win32' || names.length === 0) return
 
   const api = loadBindings()
   const keySlot: [unknown] = [null]
@@ -159,13 +159,28 @@ export function removeWindowsUserEnv(
   }
   const hKey = keySlot[0]
   try {
-    const status = api.deleteValue(hKey, name)
-    if (status !== ERROR_SUCCESS && status !== ERROR_FILE_NOT_FOUND) {
-      throw new Error(`custom-env: RegDeleteValueW(${name}) failed (Win32 ${status})`)
+    for (const name of names) {
+      const status = api.deleteValue(hKey, name)
+      if (status !== ERROR_SUCCESS && status !== ERROR_FILE_NOT_FOUND) {
+        throw new Error(`custom-env: RegDeleteValueW(${name}) failed (Win32 ${status})`)
+      }
     }
   } finally {
     api.closeKey(hKey)
   }
 
   broadcastEnvironmentChange(api)
+}
+
+/**
+ * Delete one user environment value from HKCU\\Environment.
+ * Missing values are ignored.
+ * @param name - Variable name to remove.
+ * @param platform - Override for tests; defaults to `process.platform`.
+ */
+export function removeWindowsUserEnv(
+  name: string,
+  platform: NodeJS.Platform = process.platform,
+): void {
+  removeWindowsUserEnvMany([name], platform)
 }

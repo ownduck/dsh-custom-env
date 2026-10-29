@@ -105,6 +105,39 @@ export function listEnvEntries(): { path: string; exists: boolean; entries: RawE
 }
 
 /**
+ * Create or replace many keys in one file rewrite (last duplicate name wins).
+ * Existing keys keep file order; new keys append in input order.
+ * @param entries - name/value pairs (empty values write `NAME=`).
+ */
+export function writeEnvEntries(entries: readonly { readonly name: string; readonly value: string }[]): void {
+  if (entries.length === 0) return
+  const lastByName = new Map<string, string>()
+  for (const entry of entries) {
+    assertWritableName(entry.name)
+    lastByName.set(entry.name, entry.value)
+  }
+  const pending = new Map(lastByName)
+  const next: EnvLine[] = []
+  for (const line of parseLines(readRaw())) {
+    if (line.kind === 'assignment' && line.name !== undefined && pending.has(line.name)) {
+      const value = pending.get(line.name)!
+      pending.delete(line.name)
+      next.push({
+        kind: 'assignment',
+        raw: `${line.name}=${encodeValue(value)}`,
+        name: line.name,
+      })
+      continue
+    }
+    next.push(line)
+  }
+  for (const [name, value] of pending) {
+    next.push({ kind: 'assignment', raw: `${name}=${encodeValue(value)}`, name })
+  }
+  writeEnvFile(serializeLines(next))
+}
+
+/**
  * Write `name=value` in place of `replaceName` (keeps order), or append when missing.
  * Use the same name for both to update; different names to rename in place.
  * @param replaceName - line to replace.
@@ -114,6 +147,10 @@ export function listEnvEntries(): { path: string; exists: boolean; entries: RawE
 export function writeEnvEntry(replaceName: string, name: string, value: string): void {
   assertWritableName(replaceName)
   assertWritableName(name)
+  if (replaceName === name) {
+    writeEnvEntries([{ name, value }])
+    return
+  }
   const assignment = `${name}=${encodeValue(value)}`
   let replaced = false
   const next: EnvLine[] = []
@@ -123,7 +160,7 @@ export function writeEnvEntry(replaceName: string, name: string, value: string):
       next.push({ kind: 'assignment', raw: assignment, name })
       continue
     }
-    if (replaceName !== name && line.kind === 'assignment' && line.name === name) continue
+    if (line.kind === 'assignment' && line.name === name) continue
     next.push(line)
   }
   if (!replaced) next.push({ kind: 'assignment', raw: assignment, name })
@@ -132,7 +169,7 @@ export function writeEnvEntry(replaceName: string, name: string, value: string):
 
 /** Create or replace one key (append when new). */
 export function upsertEnvEntry(name: string, value: string): void {
-  writeEnvEntry(name, name, value)
+  writeEnvEntries([{ name, value }])
 }
 
 /** Rename one key in place (keeps file order). */
@@ -141,18 +178,38 @@ export function renameEnvEntry(from: string, to: string, value: string): void {
 }
 
 /**
+ * Remove many keys from `$DSH_HOME/.env` in one rewrite.
+ * @param names - variable names (all must be writable).
+ * @returns number of assignment lines removed.
+ */
+export function removeEnvEntries(names: readonly string[]): number {
+  if (names.length === 0) return 0
+  const drop = new Set<string>()
+  for (const name of names) {
+    assertWritableName(name)
+    drop.add(name)
+  }
+  if (!existsSync(envFilePath())) return 0
+  const lines = parseLines(readRaw())
+  let removed = 0
+  const next: EnvLine[] = []
+  for (const line of lines) {
+    if (line.kind === 'assignment' && line.name !== undefined && drop.has(line.name)) {
+      removed += 1
+      continue
+    }
+    next.push(line)
+  }
+  if (removed === 0) return 0
+  writeEnvFile(serializeLines(next))
+  return removed
+}
+
+/**
  * Remove one key from `$DSH_HOME/.env` when present.
  * @param name - variable name.
  * @returns true when a line was removed.
  */
 export function removeEnvEntry(name: string): boolean {
-  if (!isWritableEnvName(name)) {
-    throw new Error(`custom-env: refused bootstrap or invalid name "${name}"`)
-  }
-  if (!existsSync(envFilePath())) return false
-  const lines = parseLines(readRaw())
-  const next = lines.filter(line => !(line.kind === 'assignment' && line.name === name))
-  if (next.length === lines.length) return false
-  writeEnvFile(serializeLines(next))
-  return true
+  return removeEnvEntries([name]) > 0
 }

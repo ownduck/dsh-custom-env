@@ -29,6 +29,13 @@ export declare function encodeRegSz(value: string): Buffer;
  */
 export declare function persistWindowsUserEnv(entries: Readonly<Record<string, string>>, platform?: NodeJS.Platform): void;
 /**
+ * Delete many user environment values from HKCU\\Environment in one open/broadcast.
+ * Missing values are ignored.
+ * @param names - Variable names to remove.
+ * @param platform - Override for tests; defaults to `process.platform`.
+ */
+export declare function removeWindowsUserEnvMany(names: readonly string[], platform?: NodeJS.Platform): void;
+/**
  * Delete one user environment value from HKCU\\Environment.
  * Missing values are ignored.
  * @param name - Variable name to remove.
