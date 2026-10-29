@@ -48,6 +48,19 @@ dsh plugin --profile desktop remove @woosau/dsh-custom-env
 
 Do not put bootstrap names (including `PATH`) in `.env`.
 
+## Plugin API
+
+Any Host plugin can call the `customEnv` service by name (no Settings row id):
+
+```ts
+const env = ctx.get('customEnv') // or ctx.customEnv when injected
+await env?.setVar('MY_KEY', 'value') // create or replace
+await env?.setVar('MY_KEY', '')      // empty value writes MY_KEY=
+await env?.removeVar('MY_KEY')       // returns whether a .env line was removed
+```
+
+Bootstrap / reserved names (`PATH`, `DSH_*`, `XDG_*`, …) are refused. Writes update `$DSH_HOME/.env`, hot-apply `process.env`, and sync the Windows / macOS user environment.
+
 ## License
 
 MIT

@@ -48,6 +48,19 @@ dsh plugin --profile desktop remove @woosau/dsh-custom-env
 
 不要把 bootstrap 名（含 `PATH`）写进 `.env`。
 
+## 插件 API
+
+任意 Host 插件可按**变量名**调用 `customEnv`（无需 Settings 行 id）：
+
+```ts
+const env = ctx.get('customEnv') // 或已注入时用 ctx.customEnv
+await env?.setVar('MY_KEY', 'value') // 新增或覆盖
+await env?.setVar('MY_KEY', '')      // 空值写入 MY_KEY=
+await env?.removeVar('MY_KEY')       // 返回是否删掉了 .env 行
+```
+
+bootstrap / 保留名（`PATH`、`DSH_*`、`XDG_*` 等）会被拒绝。写入会更新 `$DSH_HOME/.env`、热写 `process.env`，并同步 Windows / macOS 用户环境。
+
 ## 许可证
 
 MIT

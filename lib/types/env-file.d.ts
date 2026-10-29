@@ -7,7 +7,7 @@ export interface RawEnvEntry {
 /** Absolute path of `$DSH_HOME/.env`. */
 export declare function envFilePath(): string;
 /**
- * Read non-empty writable entries from `$DSH_HOME/.env`.
+ * Read writable entries from `$DSH_HOME/.env` (empty values included).
  * @returns Variable map, or `{}` when absent / empty.
  */
 export declare function loadEnvMap(): Readonly<Record<string, string>>;
@@ -25,7 +25,7 @@ export declare function listEnvEntries(): {
  * Use the same name for both to update; different names to rename in place.
  * @param replaceName - line to replace.
  * @param name - name to store.
- * @param value - non-empty value.
+ * @param value - value to store (empty string writes `NAME=`).
  */
 export declare function writeEnvEntry(replaceName: string, name: string, value: string): void;
 /** Create or replace one key (append when new). */

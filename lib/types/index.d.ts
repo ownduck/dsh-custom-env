@@ -39,7 +39,7 @@ export default class CustomEnvController extends TypertRemoteService {
     private bind;
     private unbind;
     private requireName;
-    /** Persist `name=value` replacing `from` in place; sync process.env / OS. */
+    /** Persist `name=value` replacing `from` in place; sync process.env / OS. Empty values allowed. */
     private commit;
     /** @returns path, existence, and file-ordered entries. */
     list(): Promise<EnvSnapshot>;
@@ -47,9 +47,21 @@ export default class CustomEnvController extends TypertRemoteService {
      * Create or update one row. Empty `id` creates; otherwise keeps that baseline id across renames.
      * @param id - row id, or `""` for a new row.
      * @param name - variable name.
-     * @param value - non-empty value.
+     * @param value - value (empty string allowed; Settings UI may still reject empty drafts).
      */
     upsert(id: string, name: string, value: string): Promise<EnvSnapshot>;
+    /**
+     * Create or replace one variable by name (plugin-facing; empty value allowed).
+     * @param name - writable variable name.
+     * @param value - value to store (`""` writes `NAME=` and sets `process.env[name]` to `""`).
+     */
+    setVar(name: string, value: string): Promise<void>;
+    /**
+     * Remove one variable by name (plugin-facing).
+     * @param name - writable variable name.
+     * @returns true when a `.env` line was removed.
+     */
+    removeVar(name: string): Promise<boolean>;
     /** @param id - row id from list(). */
     deleteEntry(id: string): Promise<EnvSnapshot>;
     /** Restore Host-start original name+value, or delete if added after start. */

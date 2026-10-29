@@ -93,13 +93,10 @@ export default class CustomEnvController extends TypertRemoteService {
     return name
   }
 
-  /** Persist `name=value` replacing `from` in place; sync process.env / OS. */
+  /** Persist `name=value` replacing `from` in place; sync process.env / OS. Empty values allowed. */
   private commit(from: string, name: string, value: string): void {
     if (!isWritableEnvName(name) || (from !== name && !isWritableEnvName(from))) {
       throw new RemoteError('custom-env/invalid-name', `refused name "${name}"`, { name })
-    }
-    if (value === '') {
-      throw new RemoteError('custom-env/invalid-value', `empty value for "${name}"`, { name })
     }
     try {
       writeEnvEntry(from, name, value)
@@ -134,7 +131,7 @@ export default class CustomEnvController extends TypertRemoteService {
    * Create or update one row. Empty `id` creates; otherwise keeps that baseline id across renames.
    * @param id - row id, or `""` for a new row.
    * @param name - variable name.
-   * @param value - non-empty value.
+   * @param value - value (empty string allowed; Settings UI may still reject empty drafts).
    */
   @Remote('upsert')
   async upsert(id: string, name: string, value: string): Promise<EnvSnapshot> {
@@ -147,6 +144,39 @@ export default class CustomEnvController extends TypertRemoteService {
     this.commit(from, name, value)
     this.bind(id, name)
     return this.list()
+  }
+
+  /**
+   * Create or replace one variable by name (plugin-facing; empty value allowed).
+   * @param name - writable variable name.
+   * @param value - value to store (`""` writes `NAME=` and sets `process.env[name]` to `""`).
+   */
+  @Remote('setVar')
+  async setVar(name: string, value: string): Promise<void> {
+    this.commit(name, name, value)
+    if (!this.idByName.has(name)) this.bind(this.allocId(), name)
+  }
+
+  /**
+   * Remove one variable by name (plugin-facing).
+   * @param name - writable variable name.
+   * @returns true when a `.env` line was removed.
+   */
+  @Remote('removeVar')
+  async removeVar(name: string): Promise<boolean> {
+    if (!isWritableEnvName(name)) {
+      throw new RemoteError('custom-env/invalid-name', `refused name "${name}"`, { name })
+    }
+    let removed: boolean
+    try {
+      removed = removeEnvEntry(name)
+    } catch (error) {
+      throw new RemoteError('custom-env/invalid-name', asMessage(error), { name }, { cause: error })
+    }
+    clearLive(name)
+    const id = this.idByName.get(name)
+    if (id !== undefined) this.unbind(id)
+    return removed
   }
 
   /** @param id - row id from list(). */

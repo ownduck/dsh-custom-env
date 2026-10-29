@@ -82,4 +82,21 @@ describe('env-file CRUD', () => {
       'FIRST=1\nMIDDLE_NEW=22\nLAST=3\nNEW=4\n',
     )
   })
+
+  it('persists and reloads empty values', () => {
+    previousHome = process.env.DSH_HOME
+    home = mkdtempSync(join(tmpdir(), 'dsh-custom-env-empty-'))
+    process.env.DSH_HOME = home
+
+    upsertEnvEntry('EMPTY', '')
+    assert.equal(readFileSync(join(home, '.env'), 'utf8'), 'EMPTY=\n')
+    assert.deepEqual(loadEnvMap(), { EMPTY: '' })
+    assert.deepEqual(listEnvEntries().entries, [{ name: 'EMPTY', value: '' }])
+
+    upsertEnvEntry('EMPTY', 'filled')
+    assert.deepEqual(loadEnvMap(), { EMPTY: 'filled' })
+
+    assert.equal(removeEnvEntry('EMPTY'), true)
+    assert.deepEqual(loadEnvMap(), {})
+  })
 })

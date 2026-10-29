@@ -57,17 +57,14 @@ function serializeLines(lines: readonly EnvLine[]): string {
   return kept.length === 0 ? '' : `${kept.map(line => line.raw).join('\n')}\n`
 }
 
-function assertWritable(name: string, value: string): void {
+function assertWritableName(name: string): void {
   if (!isWritableEnvName(name)) {
     throw new Error(`custom-env: refused bootstrap or invalid name "${name}"`)
-  }
-  if (value === '') {
-    throw new Error(`custom-env: empty value for "${name}"`)
   }
 }
 
 /**
- * Read non-empty writable entries from `$DSH_HOME/.env`.
+ * Read writable entries from `$DSH_HOME/.env` (empty values included).
  * @returns Variable map, or `{}` when absent / empty.
  */
 export function loadEnvMap(): Readonly<Record<string, string>> {
@@ -81,7 +78,7 @@ export function loadEnvMap(): Readonly<Record<string, string>> {
   }
   const out: Record<string, string> = {}
   for (const [key, value] of Object.entries(parsed)) {
-    if (typeof value === 'string' && value !== '' && isWritableEnvName(key)) out[key] = value
+    if (typeof value === 'string' && isWritableEnvName(key)) out[key] = value
   }
   return out
 }
@@ -112,11 +109,11 @@ export function listEnvEntries(): { path: string; exists: boolean; entries: RawE
  * Use the same name for both to update; different names to rename in place.
  * @param replaceName - line to replace.
  * @param name - name to store.
- * @param value - non-empty value.
+ * @param value - value to store (empty string writes `NAME=`).
  */
 export function writeEnvEntry(replaceName: string, name: string, value: string): void {
-  assertWritable(replaceName, value)
-  assertWritable(name, value)
+  assertWritableName(replaceName)
+  assertWritableName(name)
   const assignment = `${name}=${encodeValue(value)}`
   let replaced = false
   const next: EnvLine[] = []
