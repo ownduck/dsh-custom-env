@@ -1,6 +1,6 @@
 /**
  * Persist or delete variables in the Windows user environment (HKCU\\Environment)
- * via koffi + advapi32/user32 — same approach as the former in-tree custom-env.
+ * via koffi + advapi32 — no WM_SETTINGCHANGE broadcast (Host already updates process.env).
  */
 
 import { createRequire } from 'node:module'
@@ -14,11 +14,8 @@ const KEY_SET_VALUE = 0x0002
 const REG_SZ = 1
 const ERROR_SUCCESS = 0
 const ERROR_FILE_NOT_FOUND = 2
-const HWND_BROADCAST = 0xffff
-const WM_SETTINGCHANGE = 0x001a
-const SMTO_ABORTIFHUNG = 0x0002
 
-/** Win32 registry and broadcast calls used to publish user environment values. */
+/** Win32 registry calls used to persist user environment values. */
 export interface WindowsUserEnvBindings {
   readonly openKey: (
     hKey: number,
@@ -45,15 +42,6 @@ export interface WindowsUserEnvBindings {
   ) => number
   readonly deleteValue: (hKey: unknown, valueName: string) => number
   readonly closeKey: (hKey: unknown) => number
-  readonly sendMessageTimeout: (
-    hWnd: number,
-    msg: number,
-    wParam: number,
-    lParam: string,
-    flags: number,
-    timeoutMs: number,
-    result: [number],
-  ) => number
 }
 
 let bindings: WindowsUserEnvBindings | undefined
@@ -63,7 +51,6 @@ function loadBindings(): WindowsUserEnvBindings {
   const require = createRequire(import.meta.url)
   const koffi = require('koffi') as Koffi
   const advapi32 = koffi.load('advapi32.dll')
-  const user32 = koffi.load('user32.dll')
   bindings = {
     openKey: advapi32.func(
       'long __stdcall RegOpenKeyExW(uintptr_t hKey, const char16_t *subKey, uint32_t options, uint32_t samDesired, _Out_ void **result)',
@@ -78,9 +65,6 @@ function loadBindings(): WindowsUserEnvBindings {
       'long __stdcall RegDeleteValueW(void *hKey, const char16_t *valueName)',
     ) as WindowsUserEnvBindings['deleteValue'],
     closeKey: advapi32.func('long __stdcall RegCloseKey(void *hKey)') as WindowsUserEnvBindings['closeKey'],
-    sendMessageTimeout: user32.func(
-      'intptr_t __stdcall SendMessageTimeoutW(uintptr_t hWnd, uint32_t msg, uintptr_t wParam, const char16_t *lParam, uint32_t flags, uint32_t timeout, _Out_ uintptr_t *result)',
-    ) as WindowsUserEnvBindings['sendMessageTimeout'],
   }
   return bindings
 }
@@ -100,19 +84,6 @@ export function setWindowsUserEnvBindingsForTests(next: WindowsUserEnvBindings |
  */
 export function encodeRegSz(value: string): Buffer {
   return Buffer.from(`${value}\0`, 'utf16le')
-}
-
-function broadcastEnvironmentChange(api: WindowsUserEnvBindings): void {
-  const broadcastResult: [number] = [0]
-  api.sendMessageTimeout(
-    HWND_BROADCAST,
-    WM_SETTINGCHANGE,
-    0,
-    'Environment',
-    SMTO_ABORTIFHUNG,
-    1_000,
-    broadcastResult,
-  )
 }
 
 /**
@@ -147,7 +118,7 @@ export function hasWindowsUserEnv(
 }
 
 /**
- * Write entries into HKCU\\Environment and broadcast WM_SETTINGCHANGE.
+ * Write entries into HKCU\\Environment (no desktop-wide Environment broadcast).
  * No-op on non-Windows hosts or when `entries` is empty.
  * @param entries - Variable map to persist.
  * @param platform - Override for tests; defaults to `process.platform`.
@@ -178,12 +149,10 @@ export function writeWindowsUserEnv(
   } finally {
     api.closeKey(hKey)
   }
-
-  broadcastEnvironmentChange(api)
 }
 
 /**
- * Delete many user environment values from HKCU\\Environment in one open/broadcast.
+ * Delete many user environment values from HKCU\\Environment in one open.
  * Missing values are ignored.
  * @param names - Variable names to remove.
  * @param platform - Override for tests; defaults to `process.platform`.
@@ -211,14 +180,12 @@ export function removeWindowsUserEnvs(
   } finally {
     api.closeKey(hKey)
   }
-
-  broadcastEnvironmentChange(api)
 }
 
 /**
  * Delete one user environment value from HKCU\\Environment.
  * Missing values are ignored.
- * @param name - Variable name to remove.
+ * @param name - Variable name to delete.
  * @param platform - Override for tests; defaults to `process.platform`.
  */
 export function removeWindowsUserEnv(
@@ -227,4 +194,3 @@ export function removeWindowsUserEnv(
 ): void {
   removeWindowsUserEnvs([name], platform)
 }
-

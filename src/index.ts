@@ -47,13 +47,25 @@ function asMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-function writeLive(entries: Readonly<Record<string, string>>): void {
+/** Inject into the current Host process only (cheap; needed before other plugins read env). */
+function applyProcessEnv(entries: Readonly<Record<string, string>>): void {
   for (const [key, value] of Object.entries(entries)) process.env[key] = value
+}
+
+/** Persist into the OS user environment (HKCU / launchctl); may take longer than process.env. */
+function applyOsUserEnv(entries: Readonly<Record<string, string>>): void {
+  if (Object.keys(entries).length === 0) return
   try {
     writeUserEnv(entries)
   } catch (error) {
     process.stderr.write(`custom-env: failed to write OS user environment: ${asMessage(error)}\n`)
   }
+}
+
+/** Sync process.env and OS user environment (used by Settings / Remote writes). */
+function writeLive(entries: Readonly<Record<string, string>>): void {
+  applyProcessEnv(entries)
+  applyOsUserEnv(entries)
 }
 
 function removeLives(names: readonly string[]): void {
@@ -87,7 +99,17 @@ export default class CustomEnvController extends TypertRemoteService {
       this.bind(id, name)
       this.baselineById.set(id, { name, value })
     }
-    writeLive(loaded)
+    // Host must see values before later plugins load; OS user env can wait until
+    // after the construction path so Desktop/Web boot is not blocked on registry/launchctl.
+    applyProcessEnv(loaded)
+    if (Object.keys(loaded).length > 0) {
+      const handle = setImmediate(() => {
+        applyOsUserEnv(loaded)
+      })
+      ctx.effect(() => () => {
+        clearImmediate(handle)
+      }, 'custom-env: deferred OS env sync')
+    }
   }
 
   private allocId(): string {

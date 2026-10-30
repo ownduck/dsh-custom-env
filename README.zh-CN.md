@@ -29,7 +29,7 @@ dsh plugin --profile desktop remove @woosau/dsh-custom-env
 1. 打开 **设置 → 环境变量**
 2. 先改草稿 → **确定** 保存，**取消** 放弃
 3. **恢复** 可回到本次应用启动时的值
-4. 若希望其他工具也读到系统侧变更，请重启应用或新开终端
+4. 启动时先注入当前 Host 的 `process.env`；写入用户环境（注册表 / launchctl）会延后到启动路径之后，且不会广播。其它工具若要读到，请注销/重启后再开终端
 5. 仅在出现 **安装** 时使用：把本 Host 的 `dsh` 接到用户 PATH（Windows / macOS）
 
 系统保留名（如 `PATH`，以及 `DSH_` / `XDG_` 开头）不可在此编辑。
