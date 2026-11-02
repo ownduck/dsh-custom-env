@@ -127,7 +127,7 @@ function Slot({ empty, children }: { empty: boolean; children: ReactNode }): Rea
   return <div className={css.slot} data-empty={empty ? 'true' : 'false'}>{empty ? null : children}</div>
 }
 
-/** Slots: confirm|restart · cancel|restore|move · delete. */
+/** Slots: confirm|restart · cancel|restore · move · delete. */
 function RowActions({
   t, busy, loading, dirty, canConfirm, pending = false, showRemove = true,
   moveItems, onConfirm, onCancel, onRestore, onRemove, onMove,
@@ -147,31 +147,14 @@ function RowActions({
   onMove?: (groupId: string) => void
 }): ReactNode {
   const [moveOpen, setMoveOpen] = useState(false)
-  const showMove = !dirty && moveItems !== undefined && moveItems.length > 0 && onMove !== undefined
+  const showMove = moveItems !== undefined && moveItems.length > 0 && onMove !== undefined
   return (
     <div className={css.actions} role="group" aria-label={t('field.actions')}>
-      <Slot empty={!dirty && !pending && !showMove}>
+      <Slot empty={!dirty && !pending}>
         {dirty ? (
           <IconAction label={loading ? t('panel.loading') : t('action.confirm')} primary disabled={busy || !canConfirm} onClick={onConfirm}>
             {loading ? <IconLoadingOutlineRegular className={css.spinner} size={14} /> : <IconCheckOutlineRegular size={14} />}
           </IconAction>
-        ) : showMove ? (
-          <Menu
-            open={moveOpen}
-            onClose={() => { setMoveOpen(false) }}
-            items={moveItems.map(item => ({ id: item.id, label: item.label }))}
-            onSelect={(groupId) => {
-              setMoveOpen(false)
-              onMove(groupId)
-            }}
-            align="end"
-            portal
-            anchor={(
-              <IconAction label={t('action.moveGroup')} disabled={busy} onClick={() => { setMoveOpen(value => !value) }}>
-                <IconFolderOpenOutlineRegular size={14} />
-              </IconAction>
-            )}
-          />
         ) : (
           <Tooltip portal label={t('status.restartRequired')} side="top" delayMs={400}>
             <span className={css.restartBadge} role="img" aria-label={t('status.restartRequired')} title={t('status.restartRequired')}>
@@ -190,6 +173,24 @@ function RowActions({
             <IconRefreshOutlineRegular size={14} />
           </IconAction>
         )}
+      </Slot>
+      <Slot empty={!showMove}>
+        <Menu
+          open={moveOpen}
+          onClose={() => { setMoveOpen(false) }}
+          items={(moveItems ?? []).map(item => ({ id: item.id, label: item.label }))}
+          onSelect={(groupId) => {
+            setMoveOpen(false)
+            onMove?.(groupId)
+          }}
+          align="end"
+          portal
+          anchor={(
+            <IconAction label={t('action.moveGroup')} disabled={busy} onClick={() => { setMoveOpen(value => !value) }}>
+              <IconFolderOpenOutlineRegular size={14} />
+            </IconAction>
+          )}
+        />
       </Slot>
       <Slot empty={!showRemove}>
         <IconAction label={t('action.remove')} danger disabled={busy} onClick={onRemove}>
