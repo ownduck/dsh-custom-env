@@ -89,6 +89,20 @@
   min-width: 0;
 }
 
+.row {
+  padding: 4px 6px;
+  margin: 0 -6px;
+  user-select: none;
+}
+
+.row[data-selected='true'] {
+  background: var(--dsw-alias-fill-hover, rgba(127, 127, 127, 0.1));
+}
+
+.row[data-composer='true'] {
+  user-select: auto;
+}
+
 .header {
   padding: 0 0 2px;
 }
@@ -116,6 +130,14 @@
   width: 100%;
   max-width: 100%;
   min-width: 0;
+  /* Keep unfocused inputs out of drag text-select; focused field can still edit/select. */
+  user-select: none;
+}
+
+.field:focus-within,
+.field:focus-within .fieldInput,
+.row[data-composer='true'] .fieldInput {
+  user-select: text;
 }
 
 .actions {

@@ -54,7 +54,7 @@ const result = spawnSync(
   process.execPath,
   [
     '--import', pathToFileURL(loader).href, '--test',
-    'tests/cli-path.spec.ts', 'tests/env-file.spec.ts', 'tests/pending.spec.ts', 'tests/set-var.spec.ts',
+    'tests/cli-path.spec.ts', 'tests/env-file.spec.ts', 'tests/env-row-select.spec.ts', 'tests/parse-env-paste.spec.ts', 'tests/pending.spec.ts', 'tests/set-var.spec.ts',
   ],
   {
     cwd: root,

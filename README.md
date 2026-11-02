@@ -28,9 +28,11 @@ dsh plugin --profile desktop remove @woosau/dsh-custom-env
 
 1. Open **Settings → Environment**
 2. Edit a row as a draft → **Confirm** to save, **Cancel** to discard
-3. **Restore** brings back the value from when this app session started
-4. At startup, values are injected into the Host `process.env` first; writing the user environment (registry / launchctl) is deferred off the boot path and is not broadcast. Log off or reboot before other tools need those values
-5. Use **Install** only when shown, to wire this Host’s `dsh` command into your user PATH (Windows / macOS)
+3. Paste `NAME=VALUE` lines into the empty row to add or update several variables at once (same names overlay existing rows as drafts)
+4. Drag across rows to multi-select, or Ctrl/Cmd+click to toggle; Ctrl/Cmd+C copies selected rows as `NAME=VALUE` (input text selection still wins when present)
+5. **Restore** brings back the value from when this app session started
+6. At startup, values are injected into the Host `process.env` first; writing the user environment (registry / launchctl) is deferred off the boot path and is not broadcast. Log off or reboot before other tools need those values
+7. Use **Install** only when shown, to wire this Host’s `dsh` command into your user PATH (Windows / macOS)
 
 System-reserved names (such as `PATH` and names starting with `DSH_` / `XDG_`) cannot be edited here.
 

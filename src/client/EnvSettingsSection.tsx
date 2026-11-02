@@ -1,6 +1,9 @@
 /** Settings section: `$DSH_HOME/.env` editor + global `dsh` path. */
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import {
+  useCallback, useEffect, useRef, useState,
+  type ClipboardEvent, type MouseEvent, type ReactNode,
+} from 'react'
 import {
   Button,
   IconCheckOutlineRegular,
@@ -18,6 +21,15 @@ import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-cli
 import type { CliStatus, EnvEntry, EnvSnapshot } from '../types.ts'
 import { formatRemoteError } from './format-remote-error.ts'
 import type { EnvSettingsKey } from './locales.ts'
+import {
+  clearDomTextSelection,
+  hasFocusedInputTextSelection,
+  isSelectionEditKey,
+  rangeIds,
+  rowIdFromPoint,
+  selectedEnvCopyText,
+} from './env-row-select.ts'
+import { parseEnvPaste } from './parse-env-paste.ts'
 import css from './EnvSettingsSection.module.css'
 
 export interface EnvSettingsInjected {
@@ -36,11 +48,17 @@ export type EnvSettingsSectionProps =
   & InjectFace<EnvSettingsInjected>
 
 const NAME_OK = /^[A-Za-z_][A-Za-z0-9_]*$/u
-const NEW_ID = ''
+/** Always-empty composer row at the bottom of the list. */
+const COMPOSER_ID = ''
+const PENDING_PREFIX = 'pending:'
 
-type BusyTarget = 'boot' | 'cli' | 'new' | `row:${string}`
+type BusyTarget = 'boot' | 'cli' | `row:${string}` | `pending:${string}`
 type Translate = EnvSettingsSectionProps['t']
 interface Draft { name: string; value: string }
+
+function isPendingId(id: string): boolean {
+  return id.startsWith(PENDING_PREFIX)
+}
 
 function IconAction({
   label, disabled, onClick, danger, primary, children,
@@ -132,7 +150,10 @@ function Field(props: {
   disabled?: boolean
   placeholder?: string
   invalid?: boolean
+  /** When true, mousedown bubbles so the whole row owns selection (plain click still focuses). */
+  rowSelectGestures?: boolean
   onChange: (value: string) => void
+  onPaste?: (event: ClipboardEvent<HTMLInputElement>) => void
 }): ReactNode {
   return (
     <div className={css.field}>
@@ -145,7 +166,16 @@ function Field(props: {
         title={props.title}
         aria-invalid={props.invalid || undefined}
         aria-label={props.label}
+        onMouseDown={(event) => {
+          if (!props.rowSelectGestures) {
+            event.stopPropagation()
+            return
+          }
+          // Ctrl/Meta row-select: skip caret. Plain click focuses for editing.
+          if (isSelectionEditKey(event)) event.preventDefault()
+        }}
         onChange={(event) => { props.onChange(event.target.value) }}
+        onPaste={props.onPaste}
       />
     </div>
   )
@@ -160,22 +190,64 @@ export function EnvSettingsSection({
 }: EnvSettingsSectionProps) {
   const [snapshot, setSnapshot] = useState<EnvSnapshot | undefined>()
   const [cli, setCli] = useState<CliStatus | undefined>()
-  const [drafts, setDrafts] = useState<Record<string, Draft>>({ [NEW_ID]: { name: '', value: '' } })
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({ [COMPOSER_ID]: { name: '', value: '' } })
+  const [pendingOrder, setPendingOrder] = useState<string[]>([])
   const [busyTarget, setBusyTarget] = useState<BusyTarget | undefined>()
   const [error, setError] = useState<string | undefined>()
   const [nameError, setNameError] = useState(false)
   const [pendingRemove, setPendingRemove] = useState<{ id: string; name: string } | undefined>()
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
+  const pendingSeq = useRef(0)
+  const draftsRef = useRef(drafts)
+  draftsRef.current = drafts
+  const pendingOrderRef = useRef(pendingOrder)
+  pendingOrderRef.current = pendingOrder
+  const selectedRef = useRef(selectedIds)
+  selectedRef.current = selectedIds
+  const anchorIdRef = useRef<string | undefined>(undefined)
+  const dragModeRef = useRef<'range' | 'toggle' | undefined>(undefined)
+  const dragVisitedRef = useRef<Set<string>>(new Set())
+  /** Plain press arms drag; selection commits only after the pointer crosses rows. */
+  const dragPendingCrossRef = useRef(false)
+  const pendingRemoveRef = useRef(pendingRemove)
+  pendingRemoveRef.current = pendingRemove
 
   const busy = busyTarget !== undefined
   const entries = snapshot?.entries ?? []
   const taken = new Set(entries.map(entry => entry.name))
+  const selectableOrder = [...entries.map(entry => entry.id), ...pendingOrder]
+  const selectableOrderRef = useRef(selectableOrder)
+  selectableOrderRef.current = selectableOrder
 
-  const applySnapshot = (next: EnvSnapshot): void => {
+  const keepPendingDrafts = (
+    current: Record<string, Draft>,
+    dropId?: string,
+  ): Record<string, Draft> => {
+    const kept: Record<string, Draft> = {}
+    for (const [id, draft] of Object.entries(current)) {
+      if (!isPendingId(id) || id === dropId) continue
+      kept[id] = draft
+    }
+    return kept
+  }
+
+  const applySnapshot = (next: EnvSnapshot, dropPendingId?: string): void => {
     setSnapshot(next)
-    setDrafts({
-      [NEW_ID]: { name: '', value: '' },
+    if (dropPendingId !== undefined) {
+      setPendingOrder(order => order.filter(item => item !== dropPendingId))
+      setSelectedIds(previous => {
+        if (!previous.has(dropPendingId)) return previous
+        const ids = new Set(previous)
+        ids.delete(dropPendingId)
+        return ids
+      })
+      if (anchorIdRef.current === dropPendingId) anchorIdRef.current = undefined
+    }
+    setDrafts(current => ({
+      [COMPOSER_ID]: { name: '', value: '' },
+      ...keepPendingDrafts(current, dropPendingId),
       ...Object.fromEntries(next.entries.map(entry => [entry.id, { name: entry.name, value: entry.value }])),
-    })
+    }))
   }
 
   const setDraft = (id: string, patch: Partial<Draft>): void => {
@@ -185,12 +257,53 @@ export function EnvSettingsSection({
     }))
   }
 
-  const run = async (target: BusyTarget, action: () => Promise<EnvSnapshot>): Promise<void> => {
+  const dropPending = (id: string): void => {
+    setPendingOrder(order => order.filter(item => item !== id))
+    setSelectedIds(previous => {
+      if (!previous.has(id)) return previous
+      const next = new Set(previous)
+      next.delete(id)
+      return next
+    })
+    if (anchorIdRef.current === id) anchorIdRef.current = undefined
+    setDrafts(previous => {
+      const next = { ...previous }
+      delete next[id]
+      return next
+    })
+  }
+
+  const clearSelection = (): void => {
+    setSelectedIds(new Set())
+    anchorIdRef.current = undefined
+    clearDomTextSelection()
+  }
+
+  const pruneSelection = (allowed: ReadonlySet<string>): void => {
+    setSelectedIds(previous => {
+      let changed = false
+      const next = new Set<string>()
+      for (const id of previous) {
+        if (allowed.has(id)) next.add(id)
+        else changed = true
+      }
+      return changed ? next : previous
+    })
+    if (anchorIdRef.current !== undefined && !allowed.has(anchorIdRef.current)) {
+      anchorIdRef.current = undefined
+    }
+  }
+
+  const run = async (
+    target: BusyTarget,
+    action: () => Promise<EnvSnapshot>,
+    dropPendingId?: string,
+  ): Promise<void> => {
     if (busyTarget !== undefined) return
     setBusyTarget(target)
     setError(undefined)
     try {
-      applySnapshot(await action())
+      applySnapshot(await action(), dropPendingId)
     } catch (err) {
       setError(formatRemoteError(err, t))
     } finally {
@@ -202,7 +315,14 @@ export function EnvSettingsSection({
     setBusyTarget('boot')
     setError(undefined)
     try {
-      applySnapshot(await load())
+      setPendingOrder([])
+      clearSelection()
+      const next = await load()
+      setSnapshot(next)
+      setDrafts({
+        [COMPOSER_ID]: { name: '', value: '' },
+        ...Object.fromEntries(next.entries.map(entry => [entry.id, { name: entry.name, value: entry.value }])),
+      })
       try { setCli(await cliStatus()) } catch { setCli(undefined) }
     } catch (err) {
       setError(formatRemoteError(err, t))
@@ -213,7 +333,97 @@ export function EnvSettingsSection({
 
   useEffect(() => { void refresh() }, [refresh])
 
-  const saveRow = (id: string, entryName: string | undefined): void => {
+  useEffect(() => {
+    const allowed = new Set(selectableOrder)
+    pruneSelection(allowed)
+  }, [selectableOrder.join('\0')])
+
+  const stopEditingGesture = (): void => {
+    clearDomTextSelection()
+    const active = document.activeElement
+    if (active instanceof HTMLInputElement && active.closest(`.${css.list}`) !== null) active.blur()
+  }
+
+  /** Extend an armed drag onto `id` (pointer hit-test while primary button is down). */
+  const applyDragOverRow = (id: string): void => {
+    if (dragModeRef.current === undefined) return
+    if (dragModeRef.current === 'toggle') {
+      if (dragVisitedRef.current.has(id)) return
+      stopEditingGesture()
+      dragVisitedRef.current.add(id)
+      setSelectedIds((previous) => {
+        const next = new Set(previous)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })
+      return
+    }
+    // Plain drag selects only after the pointer leaves the press row.
+    if (dragPendingCrossRef.current && id === anchorIdRef.current) return
+    if (dragPendingCrossRef.current || id !== anchorIdRef.current) {
+      dragPendingCrossRef.current = false
+      stopEditingGesture()
+    }
+    dragVisitedRef.current.add(id)
+    setSelectedIds(new Set(rangeIds(selectableOrderRef.current, anchorIdRef.current ?? id, id)))
+  }
+
+  useEffect(() => {
+    if (selectedIds.size > 0) clearDomTextSelection()
+  }, [selectedIds])
+
+  // One document/window subscription for drag tracking, outside-click clear, and copy.
+  useEffect(() => {
+    const endDrag = (): void => {
+      dragModeRef.current = undefined
+      dragVisitedRef.current = new Set()
+      dragPendingCrossRef.current = false
+    }
+    const onMove = (event: globalThis.MouseEvent): void => {
+      if (event.buttons !== 1 || dragModeRef.current === undefined) return
+      const id = rowIdFromPoint(event.clientX, event.clientY)
+      if (id !== undefined) applyDragOverRow(id)
+    }
+    const onPointerDown = (event: globalThis.MouseEvent): void => {
+      if (selectedRef.current.size === 0 || pendingRemoveRef.current !== undefined) return
+      if (!(event.target instanceof Element)) return
+      if (event.target.closest('[data-env-row]') !== null) return
+      clearSelection()
+    }
+    const copyText = (): string =>
+      selectedEnvCopyText(selectedRef.current, selectableOrderRef.current, draftsRef.current)
+    const onKeyDown = (event: globalThis.KeyboardEvent): void => {
+      if (selectedRef.current.size === 0) return
+      if ((event.key !== 'c' && event.key !== 'C') || !isSelectionEditKey(event) || event.altKey || event.shiftKey) return
+      if (hasFocusedInputTextSelection()) return
+      const text = copyText()
+      if (text === '') return
+      event.preventDefault()
+      void navigator.clipboard.writeText(text)
+    }
+    const onCopy = (event: globalThis.ClipboardEvent): void => {
+      if (selectedRef.current.size === 0 || hasFocusedInputTextSelection()) return
+      const text = copyText()
+      if (text === '') return
+      event.preventDefault()
+      event.clipboardData?.setData('text/plain', text)
+    }
+    window.addEventListener('mouseup', endDrag)
+    window.addEventListener('mousemove', onMove)
+    document.addEventListener('mousedown', onPointerDown, true)
+    document.addEventListener('keydown', onKeyDown, true)
+    document.addEventListener('copy', onCopy, true)
+    return () => {
+      window.removeEventListener('mouseup', endDrag)
+      window.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mousedown', onPointerDown, true)
+      document.removeEventListener('keydown', onKeyDown, true)
+      document.removeEventListener('copy', onCopy, true)
+    }
+  }, [])
+
+  const saveExisting = (id: string, entryName: string): void => {
     const draft = drafts[id] ?? { name: '', value: '' }
     const name = draft.name.trim()
     const takenByOther = name !== entryName && taken.has(name)
@@ -223,12 +433,127 @@ export function EnvSettingsSection({
     }
     if (draft.value === '') return
     setNameError(false)
-    const target: BusyTarget = id === NEW_ID ? 'new' : `row:${id}`
-    void run(target, () => upsert(id, name, draft.value))
+    void run(`row:${id}`, () => upsert(id, name, draft.value))
   }
 
-  const newDraft = drafts[NEW_ID] ?? { name: '', value: '' }
-  const newDirty = newDraft.name.trim() !== '' || newDraft.value !== ''
+  const savePending = (id: string): void => {
+    const draft = drafts[id] ?? { name: '', value: '' }
+    const name = draft.name.trim()
+    if (!NAME_OK.test(name) || taken.has(name)) {
+      setNameError(true)
+      return
+    }
+    if (draft.value === '') return
+    setNameError(false)
+    void run(`pending:${id}`, () => upsert(COMPOSER_ID, name, draft.value), id)
+  }
+
+  /** First keystroke on the empty composer promotes into a pending row so the empty row stays. */
+  const typeIntoComposer = (patch: Partial<Draft>, focus: 'name' | 'value'): void => {
+    setNameError(false)
+    const base = draftsRef.current[COMPOSER_ID] ?? { name: '', value: '' }
+    const next = { name: patch.name ?? base.name, value: patch.value ?? base.value }
+    const id = `${PENDING_PREFIX}${++pendingSeq.current}`
+    setDrafts(previous => ({
+      ...previous,
+      [id]: next,
+      [COMPOSER_ID]: { name: '', value: '' },
+    }))
+    setPendingOrder(order => [...order, id])
+    queueMicrotask(() => {
+      document.getElementById(`env-${focus}-${id}`)?.focus()
+    })
+  }
+
+  const appendPendingPairs = (pairs: readonly { name: string; value: string }[]): void => {
+    if (pairs.length === 0) return
+    setNameError(false)
+    const previous = draftsRef.current
+    const order = pendingOrderRef.current
+    const nextDrafts = { ...previous, [COMPOSER_ID]: { name: '', value: '' } }
+    const savedByName = new Map(entries.map(entry => [entry.name, entry.id]))
+    const existingPendingByName = new Map<string, string>()
+    for (const id of order) {
+      const draft = previous[id]
+      if (draft !== undefined) existingPendingByName.set(draft.name.trim(), id)
+    }
+    const added: string[] = []
+    const dropPending = new Set<string>()
+    for (const pair of pairs) {
+      // Same name as a saved row: overlay that draft (dirty when value differs). No new row.
+      const savedId = savedByName.get(pair.name)
+      if (savedId !== undefined) {
+        nextDrafts[savedId] = { name: pair.name, value: pair.value }
+        const pendingDup = existingPendingByName.get(pair.name)
+        if (pendingDup !== undefined) {
+          delete nextDrafts[pendingDup]
+          dropPending.add(pendingDup)
+          existingPendingByName.delete(pair.name)
+        }
+        continue
+      }
+      const reuse = existingPendingByName.get(pair.name)
+      if (reuse !== undefined) {
+        nextDrafts[reuse] = { name: pair.name, value: pair.value }
+        continue
+      }
+      const id = `${PENDING_PREFIX}${++pendingSeq.current}`
+      nextDrafts[id] = { name: pair.name, value: pair.value }
+      existingPendingByName.set(pair.name, id)
+      added.push(id)
+    }
+    setDrafts(nextDrafts)
+    if (added.length > 0 || dropPending.size > 0) {
+      setPendingOrder([...order.filter(id => !dropPending.has(id)), ...added])
+    }
+  }
+
+  const onComposerPaste = (event: ClipboardEvent<HTMLInputElement>): void => {
+    const text = event.clipboardData.getData('text')
+    const pairs = parseEnvPaste(text)
+    if (pairs.length === 0) return
+    event.preventDefault()
+    appendPendingPairs(pairs)
+  }
+
+  const onRowMouseDown = (id: string, event: MouseEvent<HTMLDivElement>): void => {
+    if (event.button !== 0) return
+    const target = event.target as HTMLElement | null
+    const onInput = target?.closest('input') !== null
+    const onControl = target?.closest('button, a, [role="button"]') !== null
+
+    if (isSelectionEditKey(event)) {
+      event.preventDefault()
+      clearDomTextSelection()
+      dragPendingCrossRef.current = false
+      if (event.shiftKey && anchorIdRef.current !== undefined) {
+        const spanned = rangeIds(selectableOrder, anchorIdRef.current, id)
+        setSelectedIds(new Set(spanned))
+        dragModeRef.current = 'range'
+        dragVisitedRef.current = new Set(spanned)
+        return
+      }
+      setSelectedIds((previous) => {
+        const next = new Set(previous)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })
+      anchorIdRef.current = id
+      dragModeRef.current = 'toggle'
+      dragVisitedRef.current = new Set([id])
+      return
+    }
+
+    // Plain click does not select; press only arms drag until the pointer crosses rows.
+    if (!onInput && !onControl) event.preventDefault()
+    anchorIdRef.current = id
+    dragModeRef.current = 'range'
+    dragVisitedRef.current = new Set([id])
+    dragPendingCrossRef.current = true
+  }
+
+  const composer = drafts[COMPOSER_ID] ?? { name: '', value: '' }
   const cliInstalling = busyTarget === 'cli'
   const cliBooting = busyTarget === 'boot' || cli === undefined
   const showCliAction = cli?.canInstall === true || cliInstalling
@@ -287,7 +612,7 @@ export function EnvSettingsSection({
           <div className={css.headerActions} aria-hidden="true" />
         </div>
 
-        {snapshot !== undefined && entries.length === 0 && notice === undefined
+        {snapshot !== undefined && entries.length === 0 && pendingOrder.length === 0 && notice === undefined
           ? <p className={css.empty}>{t('panel.empty')}</p>
           : null}
 
@@ -298,8 +623,16 @@ export function EnvSettingsSection({
           const loading = busyTarget === `row:${entry.id}`
           const nextName = draft.name.trim()
           const canConfirm = NAME_OK.test(nextName) && draft.value !== '' && !(nextName !== entry.name && taken.has(nextName))
+          const selected = selectedIds.has(entry.id)
           return (
-            <div key={entry.id} className={css.row}>
+            <div
+              key={entry.id}
+              className={css.row}
+              data-env-row={entry.id}
+              data-selected={selected ? 'true' : 'false'}
+              aria-selected={selected}
+              onMouseDown={(event) => { onRowMouseDown(entry.id, event) }}
+            >
               <Field
                 id={`env-name-${entry.id}`}
                 value={draft.name}
@@ -307,6 +640,7 @@ export function EnvSettingsSection({
                 title={draft.name}
                 invalid={nameError && dirty}
                 label={t('field.name')}
+                rowSelectGestures
                 onChange={(name) => { setNameError(false); setDraft(entry.id, { name }) }}
               />
               <Field
@@ -315,6 +649,7 @@ export function EnvSettingsSection({
                 disabled={busy}
                 title={draft.value}
                 label={t('field.value')}
+                rowSelectGestures
                 onChange={(value) => { setDraft(entry.id, { value }) }}
               />
               <RowActions
@@ -324,7 +659,7 @@ export function EnvSettingsSection({
                 dirty={dirty || loading}
                 canConfirm={canConfirm}
                 pending={pending}
-                onConfirm={() => { saveRow(entry.id, entry.name) }}
+                onConfirm={() => { saveExisting(entry.id, entry.name) }}
                 onCancel={() => { setNameError(false); setDraft(entry.id, { name: entry.name, value: entry.value }) }}
                 onRestore={() => { void run(`row:${entry.id}`, () => restore(entry.id)) }}
                 onRemove={() => { setPendingRemove({ id: entry.id, name: entry.name }) }}
@@ -333,38 +668,78 @@ export function EnvSettingsSection({
           )
         })}
 
-        <div className={css.row}>
+        {pendingOrder.map((id) => {
+          const draft = drafts[id] ?? { name: '', value: '' }
+          const loading = busyTarget === `pending:${id}`
+          const nextName = draft.name.trim()
+          const canConfirm = NAME_OK.test(nextName) && draft.value !== '' && !taken.has(nextName)
+          const selected = selectedIds.has(id)
+          return (
+            <div
+              key={id}
+              className={css.row}
+              data-env-row={id}
+              data-selected={selected ? 'true' : 'false'}
+              aria-selected={selected}
+              onMouseDown={(event) => { onRowMouseDown(id, event) }}
+            >
+              <Field
+                id={`env-name-${id}`}
+                value={draft.name}
+                disabled={busy}
+                title={draft.name}
+                invalid={nameError}
+                label={t('field.name')}
+                rowSelectGestures
+                onChange={(name) => { setNameError(false); setDraft(id, { name }) }}
+              />
+              <Field
+                id={`env-value-${id}`}
+                value={draft.value}
+                disabled={busy}
+                title={draft.value}
+                label={t('field.value')}
+                rowSelectGestures
+                onChange={(value) => { setDraft(id, { value }) }}
+              />
+              <RowActions
+                t={t}
+                busy={busy}
+                loading={loading}
+                dirty
+                canConfirm={canConfirm}
+                showRemove={false}
+                onConfirm={() => { savePending(id) }}
+                onCancel={() => { setNameError(false); dropPending(id) }}
+                onRestore={() => undefined}
+                onRemove={() => undefined}
+              />
+            </div>
+          )
+        })}
+
+        <div className={css.row} data-composer="true">
           <Field
             id="env-new-name"
-            value={newDraft.name}
+            value={composer.name}
             disabled={busy}
             placeholder={t('field.namePlaceholder')}
-            title={newDraft.name || t('field.namePlaceholder')}
-            invalid={nameError}
+            title={composer.name || t('field.namePlaceholder')}
             label={t('field.name')}
-            onChange={(name) => { setNameError(false); setDraft(NEW_ID, { name }) }}
+            onChange={(name) => { typeIntoComposer({ name }, 'name') }}
+            onPaste={onComposerPaste}
           />
           <Field
             id="env-new-value"
-            value={newDraft.value}
+            value={composer.value}
             disabled={busy}
             placeholder={t('field.valuePlaceholder')}
-            title={newDraft.value || t('field.valuePlaceholder')}
+            title={composer.value || t('field.valuePlaceholder')}
             label={t('field.value')}
-            onChange={(value) => { setDraft(NEW_ID, { value }) }}
+            onChange={(value) => { typeIntoComposer({ value }, 'value') }}
+            onPaste={onComposerPaste}
           />
-          <RowActions
-            t={t}
-            busy={busy}
-            loading={busyTarget === 'new'}
-            dirty={newDirty || busyTarget === 'new'}
-            canConfirm={NAME_OK.test(newDraft.name.trim()) && newDraft.value !== '' && !taken.has(newDraft.name.trim())}
-            showRemove={false}
-            onConfirm={() => { saveRow(NEW_ID, undefined) }}
-            onCancel={() => { setNameError(false); setDraft(NEW_ID, { name: '', value: '' }) }}
-            onRestore={() => undefined}
-            onRemove={() => undefined}
-          />
+          <div className={css.actions} aria-hidden="true" />
         </div>
       </div>
 
