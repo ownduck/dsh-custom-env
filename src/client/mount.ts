@@ -26,9 +26,15 @@ function registerUi(ctx: Context): void {
     locale: NS,
     inject: () => ({
       load: async () => call(await ctx.remote.customEnv.list()),
-      upsert: async (id: string, name: string, value: string) => call(await ctx.remote.customEnv.upsert(id, name, value)),
+      upsert: async (id: string, name: string, value: string, groupId?: string) =>
+        call(await ctx.remote.customEnv.upsert(id, name, value, groupId)),
       remove: async (id: string) => call(await ctx.remote.customEnv.deleteEntry(id)),
       restore: async (id: string) => call(await ctx.remote.customEnv.restore(id)),
+      moveEntry: async (id: string, groupId: string) => call(await ctx.remote.customEnv.moveEntry(id, groupId)),
+      createGroup: async (title: string) => call(await ctx.remote.customEnv.createGroup(title)),
+      renameGroup: async (id: string, title: string) => call(await ctx.remote.customEnv.renameGroup(id, title)),
+      deleteGroup: async (id: string, moveToDefault: boolean) =>
+        call(await ctx.remote.customEnv.deleteGroup(id, { moveToDefault })),
       cliStatus: async () => call(await ctx.remote.customEnv.cliStatus()),
       cliInstall: async () => call(await ctx.remote.customEnv.cliInstall()),
     }),

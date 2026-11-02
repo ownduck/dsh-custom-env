@@ -5,7 +5,6 @@ export declare const NS: "settings.env";
 export declare const zh: {
     'panel.nav': string;
     'panel.title': string;
-    'panel.empty': string;
     'panel.loading': string;
     'field.name': string;
     'field.value': string;
@@ -19,6 +18,16 @@ export declare const zh: {
     'action.removeConfirm': string;
     'action.restore': string;
     'action.close': string;
+    'action.moveGroup': string;
+    'action.createGroup': string;
+    'action.renameGroup': string;
+    'action.deleteGroup': string;
+    'action.deleteGroupTitle': string;
+    'action.deleteGroupConfirm': string;
+    'action.deleteGroupMove': string;
+    'action.groupTitle': string;
+    'action.groupTitlePlaceholder': string;
+    'group.defaultTitle': string;
     'status.restartRequired': string;
     'cli.title': string;
     'cli.activeMissing': string;
@@ -27,6 +36,7 @@ export declare const zh: {
     'error.generic': string;
     'error.invalidName': string;
     'error.invalidValue': string;
+    'error.invalidGroup': string;
     'error.restoreFailed': string;
     'error.cliInstall': string;
     'error.cliUnresolved': string;
@@ -38,7 +48,6 @@ export type EnvSettingsKey = keyof typeof zh;
 export declare const en: {
     'panel.nav': string;
     'panel.title': string;
-    'panel.empty': string;
     'panel.loading': string;
     'field.name': string;
     'field.value': string;
@@ -52,6 +61,16 @@ export declare const en: {
     'action.removeConfirm': string;
     'action.restore': string;
     'action.close': string;
+    'action.moveGroup': string;
+    'action.createGroup': string;
+    'action.renameGroup': string;
+    'action.deleteGroup': string;
+    'action.deleteGroupTitle': string;
+    'action.deleteGroupConfirm': string;
+    'action.deleteGroupMove': string;
+    'action.groupTitle': string;
+    'action.groupTitlePlaceholder': string;
+    'group.defaultTitle': string;
     'status.restartRequired': string;
     'cli.title': string;
     'cli.activeMissing': string;
@@ -60,6 +79,7 @@ export declare const en: {
     'error.generic': string;
     'error.invalidName': string;
     'error.invalidValue': string;
+    'error.invalidGroup': string;
     'error.restoreFailed': string;
     'error.cliInstall': string;
     'error.cliUnresolved': string;

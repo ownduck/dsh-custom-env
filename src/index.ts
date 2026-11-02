@@ -14,19 +14,38 @@ import {
   writeEnvEntries,
   writeEnvEntry,
 } from './env-file.ts'
+import {
+  DEFAULT_GROUP_ID,
+  clearMembershipMany,
+  createGroup as createGroupMeta,
+  deleteGroupMeta,
+  hasGroup,
+  pruneMembership,
+  readGroupsFile,
+  renameGroup as renameGroupMeta,
+  resolveGroupId,
+  setMembership,
+  writeGroupsFile,
+  type GroupsFile,
+} from './groups-store.ts'
 import { isWritableEnvName } from './names.ts'
 import { removeUserEnvs, writeUserEnv } from './os-user-env/index.ts'
 import {
   classifyEntry,
   type BaselineRow,
   type CliStatus,
+  type DeleteGroupOptions,
   type EnvEntry,
+  type EnvGroup,
   type EnvSnapshot,
   type EnvVarWrite,
 } from './types.ts'
 
-export type { BaselineRow, CliStatus, EnvEntry, EnvSnapshot, EnvVarWrite } from './types.ts'
+export type {
+  BaselineRow, CliStatus, DeleteGroupOptions, EnvEntry, EnvGroup, EnvSnapshot, EnvVarWrite,
+} from './types.ts'
 export { classifyEntry } from './types.ts'
+export { DEFAULT_GROUP_ID, DEFAULT_GROUP_TITLE } from './group-ids.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -38,6 +57,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
     'custom-env/invalid-name': { readonly name: string }
     'custom-env/invalid-value': { readonly name: string }
+    'custom-env/invalid-group': { readonly group: string }
     'custom-env/cli-install-failed': { readonly code: string }
     'custom-env/restore-failed': { readonly name: string }
   }
@@ -137,6 +157,22 @@ export default class CustomEnvController extends TypertRemoteService {
     return name
   }
 
+  private loadGroups(): GroupsFile {
+    return readGroupsFile()
+  }
+
+  private saveGroups(file: GroupsFile): void {
+    writeGroupsFile(file)
+  }
+
+  private requireGroup(file: GroupsFile, groupId: string): string {
+    const id = groupId.trim() === '' ? DEFAULT_GROUP_ID : groupId
+    if (!hasGroup(file, id)) {
+      throw new RemoteError('custom-env/invalid-group', `unknown group "${id}"`, { group: id })
+    }
+    return id
+  }
+
   /**
    * Write `name=value` replacing `from` in place; sync process.env / OS.
    * Empty values create missing keys only, unless `forceEmpty` (restore).
@@ -158,7 +194,7 @@ export default class CustomEnvController extends TypertRemoteService {
     writeLive({ [name]: value })
   }
 
-  /** @returns path, existence, and file-ordered entries. */
+  /** @returns path, existence, groups, and file-ordered entries. */
   @Remote('list')
   async list(): Promise<EnvSnapshot> {
     const { path, exists, entries: raw } = listEnvEntries()
@@ -166,6 +202,7 @@ export default class CustomEnvController extends TypertRemoteService {
     for (const [name, id] of [...this.idByName]) {
       if (!present.has(name)) this.unbind(id)
     }
+    let groupsFile = this.loadGroups()
     const entries: EnvEntry[] = raw.map(({ name, value }) => {
       let id = this.idByName.get(name)
       if (id === undefined) {
@@ -173,9 +210,16 @@ export default class CustomEnvController extends TypertRemoteService {
         this.bind(id, name)
       }
       const classified = classifyEntry(id, name, value, this.baselineById)
-      return { id, name, value, kind: classified.kind, previous: classified.previous }
+      const groupId = resolveGroupId(groupsFile, id)
+      return { id, name, value, groupId, kind: classified.kind, previous: classified.previous }
     })
-    return { path, exists, entries }
+    const liveIds = new Set(entries.map(entry => entry.id))
+    const pruned = pruneMembership(groupsFile, liveIds)
+    if (pruned !== groupsFile) {
+      this.saveGroups(pruned)
+      groupsFile = pruned
+    }
+    return { path, exists, groups: groupsFile.groups, entries }
   }
 
   /**
@@ -183,17 +227,33 @@ export default class CustomEnvController extends TypertRemoteService {
    * @param id - row id, or `""` for a new row.
    * @param name - variable name.
    * @param value - value (empty creates only when missing; Settings UI may still reject empty drafts).
+   * @param groupId - required for create semantics (`id === ""`, defaults to `default`);
+   *   on update, omit to keep membership, or pass to reassign (same as `moveEntry`).
    */
   @Remote('upsert')
-  async upsert(id: string, name: string, value: string): Promise<EnvSnapshot> {
+  async upsert(id: string, name: string, value: string, groupId?: string): Promise<EnvSnapshot> {
     if (id === '') {
+      let groupsFile = this.loadGroups()
+      const target = this.requireGroup(groupsFile, groupId ?? DEFAULT_GROUP_ID)
       this.commit(name, name, value)
-      if (!this.idByName.has(name)) this.bind(this.allocId(), name)
+      let rowId = this.idByName.get(name)
+      if (rowId === undefined) {
+        rowId = this.allocId()
+        this.bind(rowId, name)
+      }
+      groupsFile = setMembership(groupsFile, rowId, target)
+      this.saveGroups(groupsFile)
       return this.list()
     }
     const from = this.requireName(id, name)
     this.commit(from, name, value)
     this.bind(id, name)
+    if (groupId !== undefined) {
+      let groupsFile = this.loadGroups()
+      const target = this.requireGroup(groupsFile, groupId)
+      groupsFile = setMembership(groupsFile, id, target)
+      this.saveGroups(groupsFile)
+    }
     return this.list()
   }
 
@@ -202,19 +262,26 @@ export default class CustomEnvController extends TypertRemoteService {
    * Non-empty values always write; empty values create missing keys only and do not
    * clear existing `$DSH_HOME/.env` or OS user values. One file rewrite; last
    * duplicate name wins. Invalid names reject the whole batch.
-   * @param entries - name/value pairs.
+   * @param entries - name/value pairs; optional `group` assigns membership when set.
+   *   Omitted `group`: new names → `default`; existing names keep their group.
    */
   @Remote('setVars')
   async setVars(entries: readonly EnvVarWrite[]): Promise<void> {
     if (entries.length === 0) return
-    const lastByName = new Map<string, string>()
+    let groupsFile = this.loadGroups()
+    const lastByName = new Map<string, { value: string; group?: string }>()
     for (const entry of entries) {
       if (!isWritableEnvName(entry.name)) {
         throw new RemoteError('custom-env/invalid-name', `refused name "${entry.name}"`, { name: entry.name })
       }
-      lastByName.set(entry.name, entry.value)
+      if (entry.group !== undefined) {
+        const group = this.requireGroup(groupsFile, entry.group)
+        lastByName.set(entry.name, { value: entry.value, group })
+      } else {
+        lastByName.set(entry.name, { value: entry.value })
+      }
     }
-    const normalized: EnvVarWrite[] = [...lastByName].map(([name, value]) => ({ name, value }))
+    const normalized: EnvVarWrite[] = [...lastByName].map(([name, { value }]) => ({ name, value }))
     let written: EnvVarWrite[]
     try {
       written = writeEnvEntries(normalized)
@@ -224,10 +291,25 @@ export default class CustomEnvController extends TypertRemoteService {
     }
     if (written.length === 0) return
     const live: Record<string, string> = {}
+    let membershipChanged = false
     for (const entry of written) {
       live[entry.name] = entry.value
-      if (!this.idByName.has(entry.name)) this.bind(this.allocId(), entry.name)
+      let rowId = this.idByName.get(entry.name)
+      const isNewRow = rowId === undefined
+      if (rowId === undefined) {
+        rowId = this.allocId()
+        this.bind(rowId, entry.name)
+      }
+      const explicitGroup = lastByName.get(entry.name)?.group
+      if (explicitGroup !== undefined) {
+        groupsFile = setMembership(groupsFile, rowId, explicitGroup)
+        membershipChanged = true
+      } else if (isNewRow) {
+        groupsFile = setMembership(groupsFile, rowId, DEFAULT_GROUP_ID)
+        membershipChanged = true
+      }
     }
+    if (membershipChanged) this.saveGroups(groupsFile)
     writeLive(live)
   }
 
@@ -235,10 +317,11 @@ export default class CustomEnvController extends TypertRemoteService {
    * Create or replace one variable by name (plugin-facing).
    * @param name - writable variable name.
    * @param value - non-empty always stores; `""` writes `NAME=` only when the key is absent.
+   * @param group - optional group id; when omitted, new names use `default` and existing keep theirs.
    */
   @Remote('setVar')
-  async setVar(name: string, value: string): Promise<void> {
-    await this.setVars([{ name, value }])
+  async setVar(name: string, value: string, group?: string): Promise<void> {
+    await this.setVars([{ name, value, group }])
   }
 
   /**
@@ -259,6 +342,11 @@ export default class CustomEnvController extends TypertRemoteService {
       seen.add(name)
       unique.push(name)
     }
+    const dropIds: string[] = []
+    for (const name of unique) {
+      const id = this.idByName.get(name)
+      if (id !== undefined) dropIds.push(id)
+    }
     let removed: number
     try {
       removed = removeEnvEntries(unique)
@@ -270,6 +358,9 @@ export default class CustomEnvController extends TypertRemoteService {
     for (const name of unique) {
       const id = this.idByName.get(name)
       if (id !== undefined) this.unbind(id)
+    }
+    if (dropIds.length > 0) {
+      this.saveGroups(clearMembershipMany(this.loadGroups(), dropIds))
     }
     return removed
   }
@@ -311,6 +402,93 @@ export default class CustomEnvController extends TypertRemoteService {
       throw new RemoteError('custom-env/restore-failed', asMessage(error), { name }, { cause: error })
     }
     this.bind(id, base.name)
+    return this.list()
+  }
+
+  /**
+   * Create a custom group.
+   * @param title - Non-empty display title.
+   */
+  @Remote('createGroup')
+  async createGroup(title: string): Promise<EnvGroup> {
+    try {
+      const { file, group } = createGroupMeta(this.loadGroups(), title)
+      this.saveGroups(file)
+      return group
+    } catch (error) {
+      throw new RemoteError('custom-env/invalid-group', asMessage(error), { group: title }, { cause: error })
+    }
+  }
+
+  /**
+   * Rename a custom group (not the default group).
+   * @param id - Group id.
+   * @param title - New title.
+   */
+  @Remote('renameGroup')
+  async renameGroup(id: string, title: string): Promise<EnvGroup> {
+    try {
+      const file = renameGroupMeta(this.loadGroups(), id, title)
+      this.saveGroups(file)
+      const group = file.groups.find(item => item.id === id)
+      if (group === undefined) {
+        throw new RemoteError('custom-env/invalid-group', `unknown group "${id}"`, { group: id })
+      }
+      return group
+    } catch (error) {
+      if (error instanceof RemoteError) throw error
+      throw new RemoteError('custom-env/invalid-group', asMessage(error), { group: id }, { cause: error })
+    }
+  }
+
+  /**
+   * Delete a custom group.
+   * @param id - Group id (not `default`).
+   * @param options - When `moveToDefault` is false, member variables are removed from `.env`.
+   */
+  @Remote('deleteGroup')
+  async deleteGroup(id: string, options: DeleteGroupOptions): Promise<EnvSnapshot> {
+    let meta
+    try {
+      meta = deleteGroupMeta(this.loadGroups(), id, options.moveToDefault)
+    } catch (error) {
+      throw new RemoteError('custom-env/invalid-group', asMessage(error), { group: id }, { cause: error })
+    }
+    if (!options.moveToDefault && meta.memberIds.length > 0) {
+      const names: string[] = []
+      for (const entryId of meta.memberIds) {
+        const name = this.nameById.get(entryId)
+        if (name !== undefined) names.push(name)
+      }
+      if (names.length > 0) {
+        try {
+          removeEnvEntries(names)
+        } catch (error) {
+          throw new RemoteError('custom-env/invalid-name', asMessage(error), { name: names[0]! }, { cause: error })
+        }
+        removeLives(names)
+        for (const name of names) {
+          const entryId = this.idByName.get(name)
+          if (entryId !== undefined) this.unbind(entryId)
+        }
+      }
+    }
+    this.saveGroups(meta.file)
+    return this.list()
+  }
+
+  /**
+   * Move one row into another group.
+   * @param id - Row id.
+   * @param groupId - Target group id.
+   */
+  @Remote('moveEntry')
+  async moveEntry(id: string, groupId: string): Promise<EnvSnapshot> {
+    this.requireName(id, id)
+    let groupsFile = this.loadGroups()
+    const target = this.requireGroup(groupsFile, groupId)
+    groupsFile = setMembership(groupsFile, id, target)
+    this.saveGroups(groupsFile)
     return this.list()
   }
 

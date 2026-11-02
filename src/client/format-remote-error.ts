@@ -20,6 +20,7 @@ export function formatRemoteError(error: unknown, t: Translate): string {
   if (isRemoteFailure(error)) {
     if (error.code === 'custom-env/invalid-name') return t('error.invalidName')
     if (error.code === 'custom-env/invalid-value') return t('error.invalidValue')
+    if (error.code === 'custom-env/invalid-group') return t('error.invalidGroup')
     if (error.code === 'custom-env/restore-failed') return t('error.restoreFailed')
     if (error.code === 'custom-env/cli-install-failed') return t('error.cliInstall')
   }

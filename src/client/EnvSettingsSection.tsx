@@ -6,19 +6,26 @@ import {
 } from 'react'
 import {
   Button,
+  Checkbox,
   IconCheckOutlineRegular,
+  IconChevronDownOutlineRegular,
   IconCloseOutlineRegular,
+  IconEditOutlineRegular,
+  IconFolderOpenOutlineRegular,
   IconLinkOutlineRegular,
   IconLoadingOutlineRegular,
+  IconPlusOutlineRegular,
   IconRefreshOutlineRegular,
   IconTrashOutlineRegular,
   IconWarningOutlineRegular,
   Input,
+  Menu,
   Modal,
   Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { CliStatus, EnvEntry, EnvSnapshot } from '../types.ts'
+import type { CliStatus, EnvEntry, EnvGroup, EnvSnapshot } from '../types.ts'
+import { DEFAULT_GROUP_ID } from '../group-ids.ts'
 import { formatRemoteError } from './format-remote-error.ts'
 import type { EnvSettingsKey } from './locales.ts'
 import {
@@ -35,9 +42,13 @@ import css from './EnvSettingsSection.module.css'
 export interface EnvSettingsInjected {
   readonly load: () => Promise<EnvSnapshot>
   /** Create (`id === ""`) or update/rename one row by stable id. */
-  readonly upsert: (id: string, name: string, value: string) => Promise<EnvSnapshot>
+  readonly upsert: (id: string, name: string, value: string, groupId?: string) => Promise<EnvSnapshot>
   readonly remove: (id: string) => Promise<EnvSnapshot>
   readonly restore: (id: string) => Promise<EnvSnapshot>
+  readonly moveEntry: (id: string, groupId: string) => Promise<EnvSnapshot>
+  readonly createGroup: (title: string) => Promise<EnvGroup>
+  readonly renameGroup: (id: string, title: string) => Promise<EnvGroup>
+  readonly deleteGroup: (id: string, moveToDefault: boolean) => Promise<EnvSnapshot>
   readonly cliStatus: () => Promise<CliStatus>
   readonly cliInstall: () => Promise<CliStatus>
 }
@@ -48,16 +59,42 @@ export type EnvSettingsSectionProps =
   & InjectFace<EnvSettingsInjected>
 
 const NAME_OK = /^[A-Za-z_][A-Za-z0-9_]*$/u
-/** Always-empty composer row at the bottom of the list. */
-const COMPOSER_ID = ''
 const PENDING_PREFIX = 'pending:'
+const COMPOSER_PREFIX = 'composer:'
 
-type BusyTarget = 'boot' | 'cli' | `row:${string}` | `pending:${string}`
+type BusyTarget = 'boot' | 'cli' | `row:${string}` | `pending:${string}` | 'group'
 type Translate = EnvSettingsSectionProps['t']
 interface Draft { name: string; value: string }
 
 function isPendingId(id: string): boolean {
   return id.startsWith(PENDING_PREFIX)
+}
+
+function composerId(groupId: string): string {
+  return `${COMPOSER_PREFIX}${groupId}`
+}
+
+function isComposerId(id: string): boolean {
+  return id.startsWith(COMPOSER_PREFIX)
+}
+
+/** Split saved rows and pending drafts by group id (unknown → default). */
+function rowsByGroup(
+  groups: readonly EnvGroup[],
+  entries: readonly EnvEntry[],
+  pendingOrder: readonly string[],
+  pendingGroup: Readonly<Record<string, string>>,
+): { readonly saved: ReadonlyMap<string, EnvEntry[]>; readonly pending: ReadonlyMap<string, string[]> } {
+  const saved = new Map<string, EnvEntry[]>(groups.map(group => [group.id, []]))
+  const pending = new Map<string, string[]>(groups.map(group => [group.id, []]))
+  for (const entry of entries) {
+    (saved.get(saved.has(entry.groupId) ? entry.groupId : DEFAULT_GROUP_ID) ?? saved.get(DEFAULT_GROUP_ID)!).push(entry)
+  }
+  for (const id of pendingOrder) {
+    const groupId = pendingGroup[id] ?? DEFAULT_GROUP_ID
+    ;(pending.get(pending.has(groupId) ? groupId : DEFAULT_GROUP_ID) ?? pending.get(DEFAULT_GROUP_ID)!).push(id)
+  }
+  return { saved, pending }
 }
 
 function IconAction({
@@ -90,10 +127,10 @@ function Slot({ empty, children }: { empty: boolean; children: ReactNode }): Rea
   return <div className={css.slot} data-empty={empty ? 'true' : 'false'}>{empty ? null : children}</div>
 }
 
-/** Slots: confirm|restart · cancel|restore · delete. */
+/** Slots: confirm|restart · cancel|restore|move · delete. */
 function RowActions({
   t, busy, loading, dirty, canConfirm, pending = false, showRemove = true,
-  onConfirm, onCancel, onRestore, onRemove,
+  moveItems, onConfirm, onCancel, onRestore, onRemove, onMove,
 }: {
   t: Translate
   busy: boolean
@@ -102,18 +139,39 @@ function RowActions({
   canConfirm: boolean
   pending?: boolean
   showRemove?: boolean
+  moveItems?: readonly { id: string; label: string }[]
   onConfirm: () => void
   onCancel: () => void
   onRestore: () => void
   onRemove: () => void
+  onMove?: (groupId: string) => void
 }): ReactNode {
+  const [moveOpen, setMoveOpen] = useState(false)
+  const showMove = !dirty && moveItems !== undefined && moveItems.length > 0 && onMove !== undefined
   return (
     <div className={css.actions} role="group" aria-label={t('field.actions')}>
-      <Slot empty={!dirty && !pending}>
+      <Slot empty={!dirty && !pending && !showMove}>
         {dirty ? (
           <IconAction label={loading ? t('panel.loading') : t('action.confirm')} primary disabled={busy || !canConfirm} onClick={onConfirm}>
             {loading ? <IconLoadingOutlineRegular className={css.spinner} size={14} /> : <IconCheckOutlineRegular size={14} />}
           </IconAction>
+        ) : showMove ? (
+          <Menu
+            open={moveOpen}
+            onClose={() => { setMoveOpen(false) }}
+            items={moveItems.map(item => ({ id: item.id, label: item.label }))}
+            onSelect={(groupId) => {
+              setMoveOpen(false)
+              onMove(groupId)
+            }}
+            align="end"
+            portal
+            anchor={(
+              <IconAction label={t('action.moveGroup')} disabled={busy} onClick={() => { setMoveOpen(value => !value) }}>
+                <IconFolderOpenOutlineRegular size={14} />
+              </IconAction>
+            )}
+          />
         ) : (
           <Tooltip portal label={t('status.restartRequired')} side="top" delayMs={400}>
             <span className={css.restartBadge} role="img" aria-label={t('status.restartRequired')} title={t('status.restartRequired')}>
@@ -171,7 +229,6 @@ function Field(props: {
             event.stopPropagation()
             return
           }
-          // Ctrl/Meta row-select: skip caret. Plain click focuses for editing.
           if (isSelectionEditKey(event)) event.preventDefault()
         }}
         onChange={(event) => { props.onChange(event.target.value) }}
@@ -186,66 +243,107 @@ function Field(props: {
  * @param props - locale `t` and Host remote callbacks.
  */
 export function EnvSettingsSection({
-  t, load, upsert, remove, restore, cliStatus, cliInstall,
+  t, load, upsert, remove, restore, moveEntry, createGroup, renameGroup, deleteGroup, cliStatus, cliInstall,
 }: EnvSettingsSectionProps) {
   const [snapshot, setSnapshot] = useState<EnvSnapshot | undefined>()
   const [cli, setCli] = useState<CliStatus | undefined>()
-  const [drafts, setDrafts] = useState<Record<string, Draft>>({ [COMPOSER_ID]: { name: '', value: '' } })
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({})
   const [pendingOrder, setPendingOrder] = useState<string[]>([])
+  const [pendingGroup, setPendingGroup] = useState<Record<string, string>>({})
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ [DEFAULT_GROUP_ID]: true })
   const [busyTarget, setBusyTarget] = useState<BusyTarget | undefined>()
   const [error, setError] = useState<string | undefined>()
   const [nameError, setNameError] = useState(false)
   const [pendingRemove, setPendingRemove] = useState<{ id: string; name: string } | undefined>()
+  const [groupModal, setGroupModal] = useState<
+    | { kind: 'create' }
+    | { kind: 'rename'; id: string; title: string }
+    | { kind: 'delete'; id: string; title: string; moveToDefault: boolean }
+    | undefined
+  >()
+  const [groupTitleDraft, setGroupTitleDraft] = useState('')
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
   const pendingSeq = useRef(0)
   const draftsRef = useRef(drafts)
   draftsRef.current = drafts
   const pendingOrderRef = useRef(pendingOrder)
   pendingOrderRef.current = pendingOrder
+  const pendingGroupRef = useRef(pendingGroup)
+  pendingGroupRef.current = pendingGroup
   const selectedRef = useRef(selectedIds)
   selectedRef.current = selectedIds
   const anchorIdRef = useRef<string | undefined>(undefined)
   const dragModeRef = useRef<'range' | 'toggle' | undefined>(undefined)
   const dragVisitedRef = useRef<Set<string>>(new Set())
-  /** Plain press arms drag; selection commits only after the pointer crosses rows. */
   const dragPendingCrossRef = useRef(false)
   const pendingRemoveRef = useRef(pendingRemove)
   pendingRemoveRef.current = pendingRemove
+  const groupModalRef = useRef(groupModal)
+  groupModalRef.current = groupModal
 
   const busy = busyTarget !== undefined
+  const groups = snapshot?.groups ?? [{ id: DEFAULT_GROUP_ID, title: t('group.defaultTitle') }]
   const entries = snapshot?.entries ?? []
   const taken = new Set(entries.map(entry => entry.name))
-  const selectableOrder = [...entries.map(entry => entry.id), ...pendingOrder]
+  const grouped = rowsByGroup(groups, entries, pendingOrder, pendingGroup)
+  const selectableOrder = groups.flatMap(group => [
+    ...(grouped.saved.get(group.id) ?? []).map(entry => entry.id),
+    ...(grouped.pending.get(group.id) ?? []),
+  ])
   const selectableOrderRef = useRef(selectableOrder)
   selectableOrderRef.current = selectableOrder
 
-  const keepPendingDrafts = (
+  const groupLabel = (group: EnvGroup): string =>
+    group.id === DEFAULT_GROUP_ID ? t('group.defaultTitle') : group.title
+
+  const keepTransientDrafts = (
     current: Record<string, Draft>,
     dropId?: string,
   ): Record<string, Draft> => {
     const kept: Record<string, Draft> = {}
     for (const [id, draft] of Object.entries(current)) {
-      if (!isPendingId(id) || id === dropId) continue
-      kept[id] = draft
+      if (isComposerId(id)) kept[id] = draft
+      else if (isPendingId(id) && id !== dropId) kept[id] = draft
     }
     return kept
   }
 
+  const emptyComposers = (nextGroups: readonly EnvGroup[], current: Record<string, Draft>): Record<string, Draft> =>
+    Object.fromEntries(nextGroups.map(group => {
+      const id = composerId(group.id)
+      return [id, current[id] ?? { name: '', value: '' }]
+    }))
+
+  const forgetPendingId = (id: string): void => {
+    setPendingOrder(order => order.filter(item => item !== id))
+    setPendingGroup((previous) => {
+      if (previous[id] === undefined) return previous
+      const next = { ...previous }
+      delete next[id]
+      return next
+    })
+    setSelectedIds(previous => {
+      if (!previous.has(id)) return previous
+      const next = new Set(previous)
+      next.delete(id)
+      return next
+    })
+    if (anchorIdRef.current === id) anchorIdRef.current = undefined
+  }
+
   const applySnapshot = (next: EnvSnapshot, dropPendingId?: string): void => {
     setSnapshot(next)
-    if (dropPendingId !== undefined) {
-      setPendingOrder(order => order.filter(item => item !== dropPendingId))
-      setSelectedIds(previous => {
-        if (!previous.has(dropPendingId)) return previous
-        const ids = new Set(previous)
-        ids.delete(dropPendingId)
-        return ids
-      })
-      if (anchorIdRef.current === dropPendingId) anchorIdRef.current = undefined
-    }
+    setOpenGroups((previous) => {
+      const merged = { ...previous }
+      for (const group of next.groups) {
+        if (merged[group.id] === undefined) merged[group.id] = group.id === DEFAULT_GROUP_ID
+      }
+      return merged
+    })
+    if (dropPendingId !== undefined) forgetPendingId(dropPendingId)
     setDrafts(current => ({
-      [COMPOSER_ID]: { name: '', value: '' },
-      ...keepPendingDrafts(current, dropPendingId),
+      ...emptyComposers(next.groups, current),
+      ...keepTransientDrafts(current, dropPendingId),
       ...Object.fromEntries(next.entries.map(entry => [entry.id, { name: entry.name, value: entry.value }])),
     }))
   }
@@ -258,14 +356,7 @@ export function EnvSettingsSection({
   }
 
   const dropPending = (id: string): void => {
-    setPendingOrder(order => order.filter(item => item !== id))
-    setSelectedIds(previous => {
-      if (!previous.has(id)) return previous
-      const next = new Set(previous)
-      next.delete(id)
-      return next
-    })
-    if (anchorIdRef.current === id) anchorIdRef.current = undefined
+    forgetPendingId(id)
     setDrafts(previous => {
       const next = { ...previous }
       delete next[id]
@@ -316,11 +407,13 @@ export function EnvSettingsSection({
     setError(undefined)
     try {
       setPendingOrder([])
+      setPendingGroup({})
       clearSelection()
       const next = await load()
       setSnapshot(next)
+      setOpenGroups(Object.fromEntries(next.groups.map(group => [group.id, group.id === DEFAULT_GROUP_ID])))
       setDrafts({
-        [COMPOSER_ID]: { name: '', value: '' },
+        ...emptyComposers(next.groups, {}),
         ...Object.fromEntries(next.entries.map(entry => [entry.id, { name: entry.name, value: entry.value }])),
       })
       try { setCli(await cliStatus()) } catch { setCli(undefined) }
@@ -334,17 +427,15 @@ export function EnvSettingsSection({
   useEffect(() => { void refresh() }, [refresh])
 
   useEffect(() => {
-    const allowed = new Set(selectableOrder)
-    pruneSelection(allowed)
+    pruneSelection(new Set(selectableOrder))
   }, [selectableOrder.join('\0')])
 
   const stopEditingGesture = (): void => {
     clearDomTextSelection()
     const active = document.activeElement
-    if (active instanceof HTMLInputElement && active.closest(`.${css.list}`) !== null) active.blur()
+    if (active instanceof HTMLInputElement && active.closest(`.${css.groups}`) !== null) active.blur()
   }
 
-  /** Extend an armed drag onto `id` (pointer hit-test while primary button is down). */
   const applyDragOverRow = (id: string): void => {
     if (dragModeRef.current === undefined) return
     if (dragModeRef.current === 'toggle') {
@@ -359,7 +450,6 @@ export function EnvSettingsSection({
       })
       return
     }
-    // Plain drag selects only after the pointer leaves the press row.
     if (dragPendingCrossRef.current && id === anchorIdRef.current) return
     if (dragPendingCrossRef.current || id !== anchorIdRef.current) {
       dragPendingCrossRef.current = false
@@ -373,7 +463,6 @@ export function EnvSettingsSection({
     if (selectedIds.size > 0) clearDomTextSelection()
   }, [selectedIds])
 
-  // One document/window subscription for drag tracking, outside-click clear, and copy.
   useEffect(() => {
     const endDrag = (): void => {
       dragModeRef.current = undefined
@@ -386,7 +475,7 @@ export function EnvSettingsSection({
       if (id !== undefined) applyDragOverRow(id)
     }
     const onPointerDown = (event: globalThis.MouseEvent): void => {
-      if (selectedRef.current.size === 0 || pendingRemoveRef.current !== undefined) return
+      if (selectedRef.current.size === 0 || pendingRemoveRef.current !== undefined || groupModalRef.current !== undefined) return
       if (!(event.target instanceof Element)) return
       if (event.target.closest('[data-env-row]') !== null) return
       clearSelection()
@@ -445,49 +534,53 @@ export function EnvSettingsSection({
     }
     if (draft.value === '') return
     setNameError(false)
-    void run(`pending:${id}`, () => upsert(COMPOSER_ID, name, draft.value), id)
+    const groupId = pendingGroup[id] ?? DEFAULT_GROUP_ID
+    void run(`pending:${id}`, () => upsert('', name, draft.value, groupId), id)
   }
 
-  /** First keystroke on the empty composer promotes into a pending row so the empty row stays. */
-  const typeIntoComposer = (patch: Partial<Draft>, focus: 'name' | 'value'): void => {
+  const typeIntoComposer = (groupId: string, patch: Partial<Draft>, focus: 'name' | 'value'): void => {
     setNameError(false)
-    const base = draftsRef.current[COMPOSER_ID] ?? { name: '', value: '' }
+    const key = composerId(groupId)
+    const base = draftsRef.current[key] ?? { name: '', value: '' }
     const next = { name: patch.name ?? base.name, value: patch.value ?? base.value }
     const id = `${PENDING_PREFIX}${++pendingSeq.current}`
     setDrafts(previous => ({
       ...previous,
       [id]: next,
-      [COMPOSER_ID]: { name: '', value: '' },
+      [key]: { name: '', value: '' },
     }))
     setPendingOrder(order => [...order, id])
+    setPendingGroup(previous => ({ ...previous, [id]: groupId }))
     queueMicrotask(() => {
       document.getElementById(`env-${focus}-${id}`)?.focus()
     })
   }
 
-  const appendPendingPairs = (pairs: readonly { name: string; value: string }[]): void => {
+  const appendPendingPairs = (groupId: string, pairs: readonly { name: string; value: string }[]): void => {
     if (pairs.length === 0) return
     setNameError(false)
     const previous = draftsRef.current
     const order = pendingOrderRef.current
-    const nextDrafts = { ...previous, [COMPOSER_ID]: { name: '', value: '' } }
-    const savedByName = new Map(entries.map(entry => [entry.name, entry.id]))
+    const groupsByPending = pendingGroupRef.current
+    const nextDrafts = { ...previous, [composerId(groupId)]: { name: '', value: '' } }
     const existingPendingByName = new Map<string, string>()
     for (const id of order) {
       const draft = previous[id]
       if (draft !== undefined) existingPendingByName.set(draft.name.trim(), id)
     }
+    const savedByName = new Map(entries.map(entry => [entry.name, entry.id]))
     const added: string[] = []
-    const dropPending = new Set<string>()
+    const dropPendingIds = new Set<string>()
+    const nextPendingGroup = { ...groupsByPending }
     for (const pair of pairs) {
-      // Same name as a saved row: overlay that draft (dirty when value differs). No new row.
       const savedId = savedByName.get(pair.name)
       if (savedId !== undefined) {
         nextDrafts[savedId] = { name: pair.name, value: pair.value }
         const pendingDup = existingPendingByName.get(pair.name)
         if (pendingDup !== undefined) {
           delete nextDrafts[pendingDup]
-          dropPending.add(pendingDup)
+          dropPendingIds.add(pendingDup)
+          delete nextPendingGroup[pendingDup]
           existingPendingByName.delete(pair.name)
         }
         continue
@@ -500,20 +593,22 @@ export function EnvSettingsSection({
       const id = `${PENDING_PREFIX}${++pendingSeq.current}`
       nextDrafts[id] = { name: pair.name, value: pair.value }
       existingPendingByName.set(pair.name, id)
+      nextPendingGroup[id] = groupId
       added.push(id)
     }
     setDrafts(nextDrafts)
-    if (added.length > 0 || dropPending.size > 0) {
-      setPendingOrder([...order.filter(id => !dropPending.has(id)), ...added])
+    setPendingGroup(nextPendingGroup)
+    if (added.length > 0 || dropPendingIds.size > 0) {
+      setPendingOrder([...order.filter(id => !dropPendingIds.has(id)), ...added])
     }
   }
 
-  const onComposerPaste = (event: ClipboardEvent<HTMLInputElement>): void => {
+  const onComposerPaste = (groupId: string, event: ClipboardEvent<HTMLInputElement>): void => {
     const text = event.clipboardData.getData('text')
     const pairs = parseEnvPaste(text)
     if (pairs.length === 0) return
     event.preventDefault()
-    appendPendingPairs(pairs)
+    appendPendingPairs(groupId, pairs)
   }
 
   const onRowMouseDown = (id: string, event: MouseEvent<HTMLDivElement>): void => {
@@ -545,7 +640,6 @@ export function EnvSettingsSection({
       return
     }
 
-    // Plain click does not select; press only arms drag until the pointer crosses rows.
     if (!onInput && !onControl) event.preventDefault()
     anchorIdRef.current = id
     dragModeRef.current = 'range'
@@ -553,7 +647,47 @@ export function EnvSettingsSection({
     dragPendingCrossRef.current = true
   }
 
-  const composer = drafts[COMPOSER_ID] ?? { name: '', value: '' }
+  const submitGroupModal = (): void => {
+    if (groupModal === undefined || busyTarget !== undefined) return
+    if (groupModal.kind === 'create' || groupModal.kind === 'rename') {
+      const title = groupTitleDraft.trim()
+      if (title === '') return
+      setBusyTarget('group')
+      setError(undefined)
+      void (async () => {
+        try {
+          if (groupModal.kind === 'create') {
+            const group = await createGroup(title)
+            const next = await load()
+            applySnapshot(next)
+            setOpenGroups(previous => ({ ...previous, [group.id]: true }))
+          } else {
+            await renameGroup(groupModal.id, title)
+            applySnapshot(await load())
+          }
+          setGroupModal(undefined)
+        } catch (err) {
+          setError(formatRemoteError(err, t))
+        } finally {
+          setBusyTarget(undefined)
+        }
+      })()
+      return
+    }
+    setBusyTarget('group')
+    setError(undefined)
+    void (async () => {
+      try {
+        applySnapshot(await deleteGroup(groupModal.id, groupModal.moveToDefault))
+        setGroupModal(undefined)
+      } catch (err) {
+        setError(formatRemoteError(err, t))
+      } finally {
+        setBusyTarget(undefined)
+      }
+    })()
+  }
+
   const cliInstalling = busyTarget === 'cli'
   const cliBooting = busyTarget === 'boot' || cli === undefined
   const showCliAction = cli?.canInstall === true || cliInstalling
@@ -561,6 +695,145 @@ export function EnvSettingsSection({
     ?? (nameError ? t('error.invalidName') : undefined)
     ?? (cli?.reason === 'could-not-resolve-expected-cli' ? t('error.cliUnresolved') : undefined)
     ?? (cli?.reason === 'unsupported-platform' ? t('error.cliUnsupported') : undefined)
+
+  const moveTargets = (currentGroupId: string): { id: string; label: string }[] =>
+    groups
+      .filter(group => group.id !== currentGroupId)
+      .map(group => ({ id: group.id, label: groupLabel(group) }))
+
+  const renderRow = (entry: EnvEntry): ReactNode => {
+    const draft = drafts[entry.id] ?? { name: entry.name, value: entry.value }
+    const dirty = draft.name !== entry.name || draft.value !== entry.value
+    const pendingKind = entry.kind === 'added' || entry.kind === 'modified'
+    const loading = busyTarget === `row:${entry.id}`
+    const nextName = draft.name.trim()
+    const canConfirm = NAME_OK.test(nextName) && draft.value !== '' && !(nextName !== entry.name && taken.has(nextName))
+    const selected = selectedIds.has(entry.id)
+    return (
+      <div
+        key={entry.id}
+        className={css.row}
+        data-env-row={entry.id}
+        data-selected={selected ? 'true' : 'false'}
+        aria-selected={selected}
+        onMouseDown={(event) => { onRowMouseDown(entry.id, event) }}
+      >
+        <Field
+          id={`env-name-${entry.id}`}
+          value={draft.name}
+          disabled={busy}
+          title={draft.name}
+          invalid={nameError && dirty}
+          label={t('field.name')}
+          rowSelectGestures
+          onChange={(name) => { setNameError(false); setDraft(entry.id, { name }) }}
+        />
+        <Field
+          id={`env-value-${entry.id}`}
+          value={draft.value}
+          disabled={busy}
+          title={draft.value}
+          label={t('field.value')}
+          rowSelectGestures
+          onChange={(value) => { setDraft(entry.id, { value }) }}
+        />
+        <RowActions
+          t={t}
+          busy={busy}
+          loading={loading}
+          dirty={dirty || loading}
+          canConfirm={canConfirm}
+          pending={pendingKind && !dirty ? true : false}
+          moveItems={moveTargets(entry.groupId)}
+          onConfirm={() => { saveExisting(entry.id, entry.name) }}
+          onCancel={() => { setNameError(false); setDraft(entry.id, { name: entry.name, value: entry.value }) }}
+          onRestore={() => { void run(`row:${entry.id}`, () => restore(entry.id)) }}
+          onRemove={() => { setPendingRemove({ id: entry.id, name: entry.name }) }}
+          onMove={(groupId) => { void run(`row:${entry.id}`, () => moveEntry(entry.id, groupId)) }}
+        />
+      </div>
+    )
+  }
+
+  const renderPending = (id: string, groupId: string): ReactNode => {
+    const draft = drafts[id] ?? { name: '', value: '' }
+    const loading = busyTarget === `pending:${id}`
+    const nextName = draft.name.trim()
+    const canConfirm = NAME_OK.test(nextName) && draft.value !== '' && !taken.has(nextName)
+    const selected = selectedIds.has(id)
+    return (
+      <div
+        key={id}
+        className={css.row}
+        data-env-row={id}
+        data-selected={selected ? 'true' : 'false'}
+        aria-selected={selected}
+        onMouseDown={(event) => { onRowMouseDown(id, event) }}
+      >
+        <Field
+          id={`env-name-${id}`}
+          value={draft.name}
+          disabled={busy}
+          title={draft.name}
+          invalid={nameError}
+          label={t('field.name')}
+          rowSelectGestures
+          onChange={(name) => { setNameError(false); setDraft(id, { name }) }}
+        />
+        <Field
+          id={`env-value-${id}`}
+          value={draft.value}
+          disabled={busy}
+          title={draft.value}
+          label={t('field.value')}
+          rowSelectGestures
+          onChange={(value) => { setDraft(id, { value }) }}
+        />
+        <RowActions
+          t={t}
+          busy={busy}
+          loading={loading}
+          dirty
+          canConfirm={canConfirm}
+          showRemove={false}
+          onConfirm={() => { savePending(id) }}
+          onCancel={() => { setNameError(false); dropPending(id) }}
+          onRestore={() => undefined}
+          onRemove={() => undefined}
+        />
+      </div>
+    )
+  }
+
+  const renderComposer = (groupId: string): ReactNode => {
+    const key = composerId(groupId)
+    const composer = drafts[key] ?? { name: '', value: '' }
+    return (
+      <div className={css.row} data-composer="true">
+        <Field
+          id={`env-new-name-${groupId}`}
+          value={composer.name}
+          disabled={busy}
+          placeholder={t('field.namePlaceholder')}
+          title={composer.name || t('field.namePlaceholder')}
+          label={t('field.name')}
+          onChange={(name) => { typeIntoComposer(groupId, { name }, 'name') }}
+          onPaste={(event) => { onComposerPaste(groupId, event) }}
+        />
+        <Field
+          id={`env-new-value-${groupId}`}
+          value={composer.value}
+          disabled={busy}
+          placeholder={t('field.valuePlaceholder')}
+          title={composer.value || t('field.valuePlaceholder')}
+          label={t('field.value')}
+          onChange={(value) => { typeIntoComposer(groupId, { value }, 'value') }}
+          onPaste={(event) => { onComposerPaste(groupId, event) }}
+        />
+        <div className={css.actions} aria-hidden="true" />
+      </div>
+    )
+  }
 
   return (
     <div className={css.section}>
@@ -605,142 +878,86 @@ export function EnvSettingsSection({
         <p className={css.notice} data-tone={error !== undefined || nameError ? 'error' : undefined} role="status">{notice}</p>
       ) : null}
 
-      <div className={css.list}>
-        <div className={css.header}>
-          <p className={css.headerLabel}>{t('field.name')}</p>
-          <p className={css.headerLabel}>{t('field.value')}</p>
-          <div className={css.headerActions} aria-hidden="true" />
-        </div>
-
-        {snapshot !== undefined && entries.length === 0 && pendingOrder.length === 0 && notice === undefined
-          ? <p className={css.empty}>{t('panel.empty')}</p>
-          : null}
-
-        {entries.map((entry: EnvEntry) => {
-          const draft = drafts[entry.id] ?? { name: entry.name, value: entry.value }
-          const dirty = draft.name !== entry.name || draft.value !== entry.value
-          const pending = entry.kind === 'added' || entry.kind === 'modified'
-          const loading = busyTarget === `row:${entry.id}`
-          const nextName = draft.name.trim()
-          const canConfirm = NAME_OK.test(nextName) && draft.value !== '' && !(nextName !== entry.name && taken.has(nextName))
-          const selected = selectedIds.has(entry.id)
+      <div className={css.groups}>
+        {groups.map((group) => {
+          const expanded = openGroups[group.id] === true
+          const groupEntries = grouped.saved.get(group.id) ?? []
+          const groupPending = grouped.pending.get(group.id) ?? []
+          const isDefault = group.id === DEFAULT_GROUP_ID
           return (
-            <div
-              key={entry.id}
-              className={css.row}
-              data-env-row={entry.id}
-              data-selected={selected ? 'true' : 'false'}
-              aria-selected={selected}
-              onMouseDown={(event) => { onRowMouseDown(entry.id, event) }}
-            >
-              <Field
-                id={`env-name-${entry.id}`}
-                value={draft.name}
-                disabled={busy}
-                title={draft.name}
-                invalid={nameError && dirty}
-                label={t('field.name')}
-                rowSelectGestures
-                onChange={(name) => { setNameError(false); setDraft(entry.id, { name }) }}
-              />
-              <Field
-                id={`env-value-${entry.id}`}
-                value={draft.value}
-                disabled={busy}
-                title={draft.value}
-                label={t('field.value')}
-                rowSelectGestures
-                onChange={(value) => { setDraft(entry.id, { value }) }}
-              />
-              <RowActions
-                t={t}
-                busy={busy}
-                loading={loading}
-                dirty={dirty || loading}
-                canConfirm={canConfirm}
-                pending={pending}
-                onConfirm={() => { saveExisting(entry.id, entry.name) }}
-                onCancel={() => { setNameError(false); setDraft(entry.id, { name: entry.name, value: entry.value }) }}
-                onRestore={() => { void run(`row:${entry.id}`, () => restore(entry.id)) }}
-                onRemove={() => { setPendingRemove({ id: entry.id, name: entry.name }) }}
-              />
-            </div>
+            <section key={group.id} className={css.group}>
+              <div className={css.groupTitleRow}>
+                <button
+                  type="button"
+                  className={css.groupToggle}
+                  aria-expanded={expanded}
+                  onClick={() => {
+                    setOpenGroups(previous => ({ ...previous, [group.id]: !expanded }))
+                  }}
+                >
+                  <IconChevronDownOutlineRegular className={css.chevron} size={12} aria-hidden="true" />
+                  <span className={css.groupTitle}>{groupLabel(group)}</span>
+                </button>
+                <div className={css.headerEnd}>
+                  {isDefault ? (
+                    <IconAction
+                      label={t('action.createGroup')}
+                      disabled={busy}
+                      onClick={() => {
+                        setGroupTitleDraft('')
+                        setGroupModal({ kind: 'create' })
+                      }}
+                    >
+                      <IconPlusOutlineRegular size={14} />
+                    </IconAction>
+                  ) : (
+                    <>
+                      <IconAction
+                        label={t('action.renameGroup')}
+                        disabled={busy}
+                        onClick={() => {
+                          setGroupTitleDraft(group.title)
+                          setGroupModal({ kind: 'rename', id: group.id, title: group.title })
+                        }}
+                      >
+                        <IconEditOutlineRegular size={14} />
+                      </IconAction>
+                      <IconAction
+                        label={t('action.deleteGroup')}
+                        danger
+                        disabled={busy}
+                        onClick={() => {
+                          setGroupModal({
+                            kind: 'delete',
+                            id: group.id,
+                            title: group.title,
+                            moveToDefault: true,
+                          })
+                        }}
+                      >
+                        <IconTrashOutlineRegular size={14} />
+                      </IconAction>
+                    </>
+                  )}
+                </div>
+              </div>
+              {expanded ? (
+                <div className={css.groupBody}>
+                  {isDefault ? (
+                    <div className={css.header}>
+                      <p className={css.headerLabel}>{t('field.name')}</p>
+                      <p className={css.headerLabel}>{t('field.value')}</p>
+                      <div className={css.headerActions} aria-hidden="true" />
+                    </div>
+                  ) : null}
+                  {groupEntries.map(entry => renderRow(entry))}
+                  {groupPending.map(id => renderPending(id, group.id))}
+                  {renderComposer(group.id)}
+                </div>
+              ) : null}
+            </section>
           )
         })}
-
-        {pendingOrder.map((id) => {
-          const draft = drafts[id] ?? { name: '', value: '' }
-          const loading = busyTarget === `pending:${id}`
-          const nextName = draft.name.trim()
-          const canConfirm = NAME_OK.test(nextName) && draft.value !== '' && !taken.has(nextName)
-          const selected = selectedIds.has(id)
-          return (
-            <div
-              key={id}
-              className={css.row}
-              data-env-row={id}
-              data-selected={selected ? 'true' : 'false'}
-              aria-selected={selected}
-              onMouseDown={(event) => { onRowMouseDown(id, event) }}
-            >
-              <Field
-                id={`env-name-${id}`}
-                value={draft.name}
-                disabled={busy}
-                title={draft.name}
-                invalid={nameError}
-                label={t('field.name')}
-                rowSelectGestures
-                onChange={(name) => { setNameError(false); setDraft(id, { name }) }}
-              />
-              <Field
-                id={`env-value-${id}`}
-                value={draft.value}
-                disabled={busy}
-                title={draft.value}
-                label={t('field.value')}
-                rowSelectGestures
-                onChange={(value) => { setDraft(id, { value }) }}
-              />
-              <RowActions
-                t={t}
-                busy={busy}
-                loading={loading}
-                dirty
-                canConfirm={canConfirm}
-                showRemove={false}
-                onConfirm={() => { savePending(id) }}
-                onCancel={() => { setNameError(false); dropPending(id) }}
-                onRestore={() => undefined}
-                onRemove={() => undefined}
-              />
-            </div>
-          )
-        })}
-
-        <div className={css.row} data-composer="true">
-          <Field
-            id="env-new-name"
-            value={composer.name}
-            disabled={busy}
-            placeholder={t('field.namePlaceholder')}
-            title={composer.name || t('field.namePlaceholder')}
-            label={t('field.name')}
-            onChange={(name) => { typeIntoComposer({ name }, 'name') }}
-            onPaste={onComposerPaste}
-          />
-          <Field
-            id="env-new-value"
-            value={composer.value}
-            disabled={busy}
-            placeholder={t('field.valuePlaceholder')}
-            title={composer.value || t('field.valuePlaceholder')}
-            label={t('field.value')}
-            onChange={(value) => { typeIntoComposer({ value }, 'value') }}
-            onPaste={onComposerPaste}
-          />
-          <div className={css.actions} aria-hidden="true" />
-        </div>
       </div>
 
       <Modal
@@ -767,6 +984,57 @@ export function EnvSettingsSection({
           </>
         )}
       />
+
+      <Modal
+        open={groupModal !== undefined}
+        onClose={() => { if (!busy) setGroupModal(undefined) }}
+        title={
+          groupModal?.kind === 'create' ? t('action.createGroup')
+            : groupModal?.kind === 'rename' ? t('action.renameGroup')
+              : t('action.deleteGroupTitle')
+        }
+        closeLabel={t('action.close')}
+        description={
+          groupModal?.kind === 'delete'
+            ? t('action.deleteGroupConfirm', { title: groupModal.title })
+            : undefined
+        }
+        footer={(
+          <>
+            <Button variant="outline" disabled={busy} onClick={() => { setGroupModal(undefined) }}>{t('action.cancel')}</Button>
+            <Button
+              variant="primary"
+              disabled={busy || ((groupModal?.kind === 'create' || groupModal?.kind === 'rename') && groupTitleDraft.trim() === '')}
+              onClick={() => { submitGroupModal() }}
+            >
+              {groupModal?.kind === 'delete' ? t('action.deleteGroup') : t('action.confirm')}
+            </Button>
+          </>
+        )}
+      >
+        {groupModal?.kind === 'create' || groupModal?.kind === 'rename' ? (
+          <div className={css.modalField}>
+            <Input
+              value={groupTitleDraft}
+              placeholder={t('action.groupTitlePlaceholder')}
+              aria-label={t('action.groupTitle')}
+              disabled={busy}
+              onChange={(event) => { setGroupTitleDraft(event.target.value) }}
+            />
+          </div>
+        ) : null}
+        {groupModal?.kind === 'delete' ? (
+          <Checkbox
+            className={css.modalCheck}
+            checked={groupModal.moveToDefault}
+            disabled={busy}
+            label={t('action.deleteGroupMove')}
+            onChange={(checked) => {
+              setGroupModal({ ...groupModal, moveToDefault: checked })
+            }}
+          />
+        ) : null}
+      </Modal>
     </div>
   )
 }
