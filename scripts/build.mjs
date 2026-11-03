@@ -47,6 +47,19 @@ await esbuild.build({
   packages: 'external',
 })
 
+// Separate child entry so `spawn(process.execPath, [write-user-env.child.js])` resolves beside lib/index.js.
+await esbuild.build({
+  absWorkingDir: root,
+  entryPoints: [join(root, 'src', 'os-user-env', 'write-user-env.child.ts')],
+  outfile: join(root, 'lib', 'write-user-env.child.js'),
+  bundle: true,
+  platform: 'node',
+  format: 'esm',
+  target: 'node22',
+  sourcemap: false,
+  packages: 'external',
+})
+
 await esbuild.build({
   absWorkingDir: root,
   entryPoints: [join(root, 'src', 'client', 'index.ts')],
@@ -150,4 +163,4 @@ if (result.status !== 0) {
   process.stderr.write('tsc declaration emit reported errors; continuing with hand-maintained lib/types where needed.\n')
 }
 
-process.stdout.write('build: wrote lib/index.js and lib/client.js\n')
+process.stdout.write('build: wrote lib/index.js, lib/write-user-env.child.js, and lib/client.js\n')

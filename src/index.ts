@@ -2,6 +2,7 @@
  * Host service: load `$DSH_HOME/.env` into process.env and expose CRUD remotes.
  */
 
+import type { ChildProcess } from 'node:child_process'
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { cliInstall as installCli, cliStatus as readCliStatus } from './cli-path/index.ts'
@@ -30,6 +31,7 @@ import {
 } from './groups-store.ts'
 import { isWritableEnvName } from './names.ts'
 import { removeUserEnvs, writeUserEnv } from './os-user-env/index.ts'
+import { startWriteUserEnvChild } from './os-user-env/write-user-env-child.ts'
 import {
   classifyEntry,
   type BaselineRow,
@@ -82,6 +84,39 @@ function applyOsUserEnv(entries: Readonly<Record<string, string>>): void {
   }
 }
 
+/**
+ * After boot sync work, persist OS user env in a child process (koffi-safe for Electron).
+ * Falls back to an in-process write when the child script is missing or cannot start.
+ */
+function scheduleOsUserEnvSync(ctx: Context, entries: Readonly<Record<string, string>>): void {
+  if (Object.keys(entries).length === 0) return
+  let child: ChildProcess | undefined
+  const handle = setImmediate(() => {
+    try {
+      child = startWriteUserEnvChild(entries)
+      if (child === undefined) {
+        applyOsUserEnv(entries)
+        return
+      }
+      child.on('error', error => {
+        process.stderr.write(
+          `custom-env: OS user env child failed (${asMessage(error)}); falling back to sync write\n`,
+        )
+        applyOsUserEnv(entries)
+      })
+    } catch (error) {
+      process.stderr.write(
+        `custom-env: could not start OS user env child (${asMessage(error)}); falling back to sync write\n`,
+      )
+      applyOsUserEnv(entries)
+    }
+  })
+  ctx.effect(() => () => {
+    clearImmediate(handle)
+    child?.kill()
+  }, 'custom-env: deferred OS env sync')
+}
+
 /** Sync process.env and OS user environment (used by Settings / Remote writes). */
 function writeLive(entries: Readonly<Record<string, string>>): void {
   applyProcessEnv(entries)
@@ -119,17 +154,9 @@ export default class CustomEnvController extends TypertRemoteService {
       this.bind(id, name)
       this.baselineById.set(id, { name, value })
     }
-    // Host must see values before later plugins load; OS user env can wait until
-    // after the construction path so Desktop/Web boot is not blocked on registry/launchctl.
+    // process.env must apply before later plugins load; OS user env is deferred off-boot.
     applyProcessEnv(loaded)
-    if (Object.keys(loaded).length > 0) {
-      const handle = setImmediate(() => {
-        applyOsUserEnv(loaded)
-      })
-      ctx.effect(() => () => {
-        clearImmediate(handle)
-      }, 'custom-env: deferred OS env sync')
-    }
+    scheduleOsUserEnvSync(ctx, loaded)
   }
 
   private allocId(): string {

@@ -32,7 +32,7 @@ dsh plugin --profile desktop remove @woosau/dsh-custom-env
 4. 在空行粘贴多行 `NAME=VALUE` 可批量新增或覆盖同名变量（同名写入原行草稿，且不改其所属分组）
 5. 拖动可多选行，Ctrl/Cmd+点击切换选中；Ctrl/Cmd+C 按 `NAME=VALUE` 复制选中行（若 Input 内有文字选区则优先复制文字）
 6. **恢复** 可回到本次应用启动时的值
-7. 启动时先注入当前 Host 的 `process.env`；写入用户环境（注册表 / launchctl）会延后到启动路径之后，且不会广播。其它工具若要读到，请注销/重启后再开终端
+7. 启动时先注入当前 Host 的 `process.env`；写入用户环境（注册表 / launchctl）会在启动路径之后的 `setImmediate` 里交给子进程，且不会广播。其它工具若要读到，请注销/重启后再开终端
 8. 仅在出现 **安装** 时使用：把本 Host 的 `dsh` 接到用户 PATH（Windows / macOS）
 
 系统保留名（如 `PATH`，以及 `DSH_` / `XDG_` 开头）不可在此编辑。
